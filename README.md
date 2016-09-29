@@ -25,8 +25,6 @@ Install tooling:
 
 * python
 
-*IGNORE: In the future: Install tooling: apex, awscli, terraform*
-
 ## Set up .env.json as in example:
 
 ```
@@ -53,7 +51,7 @@ pip install -r requirements.txt
 python main.py
 ```
 
-If you want you can access Redshift directly via psql to take a look at the data:
+If you want, you can access Redshift directly via psql to take a look at the data:
 
 ```
 psql -h cg-analytics.cqxchced59ta.eu-west-1.redshift.amazonaws.com --port 5439 --user cybergreen -d dev
@@ -67,7 +65,7 @@ $ sh load.sh
 
 ## Testing
 
-### Setup testing environment
+### Set up testing environment
 
 #### 1. Install test requirements
 
@@ -86,7 +84,7 @@ access redshift instance:
 * "REDSHIFT_USER" - user name
 * "REDSHIFT_DBNAME" - database name
 * "REDSHIFT_HOST" - redshift host address on amazon
-* "REDSHIFT_PORT" - redshift port (Currenltly used 5439)
+* "REDSHIFT_PORT" - redshift port (Currently using 5439)
 
 #### 3. Create local postgres user and database
 
