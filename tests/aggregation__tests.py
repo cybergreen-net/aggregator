@@ -28,6 +28,7 @@ connection = psycopg2.connect(
     port=env['REDSHIFT_PORT']
 )
 
+
 class AggregationTestCase(unittest.TestCase):
     # Test aggregation functions by week, place, risk, and scores calculation.
 
@@ -47,7 +48,6 @@ class AggregationTestCase(unittest.TestCase):
             pass
         main.create_table()
 
-    #@attr('only')
     def test_group_by_week(self):
         # GIVEN 3 entries of the same asn, risk and country, two of which within one week
         ntp_scan_csv = dedent('''\
@@ -71,14 +71,18 @@ class AggregationTestCase(unittest.TestCase):
             ])
     
     def test_group_by_distinct_ip(self):
-        # GIVEN 4 entries of the same asn, risk and country, two of which within one week and have same ip
+        # GIVEN 7 entries of the same asn, risk and country from hostA (71.3.0.0) and hostB (190.81.134)
+        # First week: 2 hostA entries, 1 hostB entry
+        # Second week: 2 hostA entries, 2 hostB entries
         ntp_scan_csv = dedent('''\
         ts,ip,risk_id,asn,cc
         2016-09-20T00:00:01+00:00,71.3.0.0,2,12252,US
+        2016-09-20T00:00:01+00:00,71.3.0.0,2,12252,US
+        2016-09-20T00:00:01+00:00,190.81.134.11,2,12252,US
         2016-09-27T00:00:01+00:00,71.3.0.0,2,12252,US
+        2016-09-28T00:00:01+00:00,71.3.0.0,2,12252,US
         2016-09-28T00:00:01+00:00,190.81.134.11,2,12252,US
         2016-09-29T00:00:01+00:00,190.81.134.11,2,12252,US
-        2016-09-20T00:00:01+00:00,190.81.134.11,2,12252,US
         ''')
         self.cursor.copy_expert("COPY logentry from STDIN csv header", StringIO(ntp_scan_csv))
 
@@ -90,8 +94,11 @@ class AggregationTestCase(unittest.TestCase):
         self.assertEqual(
             self.cursor.fetchall(),
             [
+                # First week: 2 entries from hostA count as one
                 (1L, 2, 'US', 12252L, '2016-09-19', 'monthly', 2),
-                (2L, 2, 'US', 12252L, '2016-09-26', 'monthly', 2)  # third duplicated ip's in same week filtered and not counted
+
+                # Second week: duplicated entries for hostA and hostB will merge to single one for each host
+                (2L, 2, 'US', 12252L, '2016-09-26', 'monthly', 2)
             ])
 
     def test_group_by_country(self):
@@ -101,11 +108,10 @@ class AggregationTestCase(unittest.TestCase):
         2016-09-28T00:00:01+00:00,190.81.134.82,2,4444,US
         2016-09-29T00:00:01+00:00,190.81.134.11,2,12252,US
         2016-09-29T00:00:01+00:00,190.81.134.11,2,3333,DE
-        2016-09-29T00:00:01+00:00,190.81.134.11,2,3333,DE
         ''')
         self.cursor.copy_expert("COPY logentry from STDIN csv header", StringIO(ntp_scan_csv))
 
-        # WHEN grouped entried get created
+        # WHEN grouped entries get created
         main.create_count()
         main.create_count_by_country()
 
@@ -125,11 +131,10 @@ class AggregationTestCase(unittest.TestCase):
         2016-09-28T00:00:01+00:00,190.81.134.82,7,4444,US
         2016-09-29T00:00:01+00:00,190.81.134.11,2,12252,US
         2016-09-29T00:00:01+00:00,190.81.134.11,2,3333,DE
-        2016-09-29T00:00:01+00:00,190.81.134.11,2,3333,DE
         ''')
         self.cursor.copy_expert("COPY logentry from STDIN csv header", StringIO(ntp_scan_csv))
 
-        # WHEN grouped entried get created
+        # WHEN grouped entries get created
         main.create_count()
         main.create_count_by_country()
         main.create_count_by_risk()
@@ -150,13 +155,12 @@ class AggregationTestCase(unittest.TestCase):
         2016-09-28T00:00:01+00:00,190.81.134.82,2,4444,US
         2016-09-29T00:00:01+00:00,190.81.134.11,2,12252,US
         2016-09-29T00:00:01+00:00,190.81.134.11,2,3333,DE
-        2016-09-29T00:00:01+00:00,190.81.134.11,2,3333,DE
         2016-09-29T00:00:01+00:00,190.81.134.33,2,3333,DE
         2016-09-29T00:00:01+00:00,190.81.134.35,2,3333,DE
         ''')
         self.cursor.copy_expert("COPY logentry from STDIN csv header", StringIO(ntp_scan_csv))
 
-        # WHEN grouped entried get created
+        # WHEN grouped entries get created
         main.create_count()
         main.create_count_by_country()
         main.create_count_by_risk()
