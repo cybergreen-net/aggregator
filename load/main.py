@@ -92,7 +92,7 @@ def create_count():
         print('Drop table %s'%(tablename))
     create = """
 CREATE TABLE %s (
-id BIGSERIAL PRIMARY KEY,
+id bigint PRIMARY KEY,
 risk int,
 country varchar(2),
 asn  bigint,
@@ -107,7 +107,7 @@ count int
 INSERT INTO %s(risk, country, asn, date, period_tipe, count)
 (SELECT risk, place as country, asn, TO_CHAR(date, 'YYYY-MM-DD') as date, 'monthly', count(*) as count FROM 
 (SELECT DISTINCT (ip), date_trunc('week', date) AS date, risk, asn, place FROM %s) AS foo 
-GROUP BY TO_CHAR(date, 'YYYY-MM-DD'), asn, risk, place limit 100);
+GROUP BY TO_CHAR(date, 'YYYY-MM-DD'), asn, risk, place);
 """%(tablename, copytable)
     cursor.execute(query)
     connection.commit()
