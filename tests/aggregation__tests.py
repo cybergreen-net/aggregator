@@ -54,11 +54,11 @@ class AggregationTestCase(unittest.TestCase):
         ts,ip,risk_id,asn,cc
         2016-09-20T00:00:01+00:00,71.3.0.0,2,12252,US
         2016-09-28T00:00:01+00:00,190.81.134.82,2,12252,US
-        2016-09-29T00:00:01+00:00,190.81.134.11,2,12252,US
+        2016-09-29T00:00:01+00:00,190.81.135.11,2,12252,US
         ''')
         self.cursor.copy_expert("COPY logentry from STDIN csv header", StringIO(ntp_scan_csv))
 
-        # WHEN grouped entried get created
+        # WHEN grouped entries get created
         main.create_count()
 
         # THEN count table should have 2 entries which get grouped, and one entry which stands alone
@@ -69,6 +69,30 @@ class AggregationTestCase(unittest.TestCase):
                 (1L, 2, 'US', 12252L, '2016-09-19', 'monthly', 1),
                 (2L, 2, 'US', 12252L, '2016-09-26', 'monthly', 2)  # grouped two entries
             ])
+    
+    def test_group_by_distinct_ip(self):
+        # GIVEN 4 entries of the same asn, risk and country, two of which within one week and have same ip
+        ntp_scan_csv = dedent('''\
+        ts,ip,risk_id,asn,cc
+        2016-09-20T00:00:01+00:00,71.3.0.0,2,12252,US
+        2016-09-27T00:00:01+00:00,71.3.0.0,2,12252,US
+        2016-09-28T00:00:01+00:00,190.81.134.11,2,12252,US
+        2016-09-29T00:00:01+00:00,190.81.134.11,2,12252,US
+        2016-09-20T00:00:01+00:00,190.81.134.11,2,12252,US
+        ''')
+        self.cursor.copy_expert("COPY logentry from STDIN csv header", StringIO(ntp_scan_csv))
+
+        # WHEN grouped entries get created
+        main.create_count()
+
+        # THEN count table should have 2 entries which get grouped, and one entry which stands alone
+        self.cursor.execute('select * from count;')
+        self.assertEqual(
+            self.cursor.fetchall(),
+            [
+                (1L, 2, 'US', 12252L, '2016-09-19', 'monthly', 2),
+                (2L, 2, 'US', 12252L, '2016-09-26', 'monthly', 2)  # third duplicated ip's in same week filtered and not counted
+            ])
 
     def test_group_by_country(self):
         # GIVEN 3 entries of the same risk and week, two of which are from one country, but different asn
@@ -76,6 +100,7 @@ class AggregationTestCase(unittest.TestCase):
         ts,ip,risk_id,asn,cc
         2016-09-28T00:00:01+00:00,190.81.134.82,2,4444,US
         2016-09-29T00:00:01+00:00,190.81.134.11,2,12252,US
+        2016-09-29T00:00:01+00:00,190.81.134.11,2,3333,DE
         2016-09-29T00:00:01+00:00,190.81.134.11,2,3333,DE
         ''')
         self.cursor.copy_expert("COPY logentry from STDIN csv header", StringIO(ntp_scan_csv))
@@ -100,6 +125,7 @@ class AggregationTestCase(unittest.TestCase):
         2016-09-28T00:00:01+00:00,190.81.134.82,7,4444,US
         2016-09-29T00:00:01+00:00,190.81.134.11,2,12252,US
         2016-09-29T00:00:01+00:00,190.81.134.11,2,3333,DE
+        2016-09-29T00:00:01+00:00,190.81.134.11,2,3333,DE
         ''')
         self.cursor.copy_expert("COPY logentry from STDIN csv header", StringIO(ntp_scan_csv))
 
@@ -123,6 +149,7 @@ class AggregationTestCase(unittest.TestCase):
         ts,ip,risk_id,asn,cc
         2016-09-28T00:00:01+00:00,190.81.134.82,2,4444,US
         2016-09-29T00:00:01+00:00,190.81.134.11,2,12252,US
+        2016-09-29T00:00:01+00:00,190.81.134.11,2,3333,DE
         2016-09-29T00:00:01+00:00,190.81.134.11,2,3333,DE
         2016-09-29T00:00:01+00:00,190.81.134.33,2,3333,DE
         2016-09-29T00:00:01+00:00,190.81.134.35,2,3333,DE
