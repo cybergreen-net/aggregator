@@ -104,10 +104,11 @@ count int
     cursor.execute(create)
     connection.commit()
     query = """
-    INSERT INTO %s(risk, country, asn, date, period_tipe, count)
-    (SELECT risk, place as country, asn, TO_CHAR(date_trunc('week', date), 'YYYY-MM-DD') AS "date", 'monthly', COUNT(*) AS count
-    FROM %s GROUP BY TO_CHAR(date_trunc('week', date), 'YYYY-MM-DD'), asn, risk, place)
-    """%(tablename, copytable)
+INSERT INTO %s(risk, country, asn, date, period_tipe, count)
+(SELECT risk, place as country, asn, TO_CHAR(date, 'YYYY-MM-DD') as date, 'monthly', count(*) as count FROM 
+(SELECT DISTINCT (ip), date_trunc('week', date) AS date, risk, asn, place FROM %s) AS foo 
+GROUP BY TO_CHAR(date, 'YYYY-MM-DD'), asn, risk, place limit 100);
+"""%(tablename, copytable)
     cursor.execute(query)
     connection.commit()
     print('%s table created'%(tablename))
