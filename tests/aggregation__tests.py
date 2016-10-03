@@ -66,8 +66,8 @@ class AggregationTestCase(unittest.TestCase):
         self.assertEqual(
             self.cursor.fetchall(),
             [
-                (1L, 2, 'US', 12252L, '2016-09-19', 'monthly', 1),
-                (2L, 2, 'US', 12252L, '2016-09-26', 'monthly', 2)  # grouped two entries
+                (2, 'US', 12252L, '2016-09-19', 'monthly', 1),
+                (2, 'US', 12252L, '2016-09-26', 'monthly', 2)  # grouped two entries
             ])
     
     def test_group_by_distinct_ip(self):
@@ -95,10 +95,10 @@ class AggregationTestCase(unittest.TestCase):
             self.cursor.fetchall(),
             [
                 # First week: 2 entries from hostA count as one
-                (1L, 2, 'US', 12252L, '2016-09-19', 'monthly', 2),
+                (2, 'US', 12252L, '2016-09-19', 'monthly', 2),
 
                 # Second week: duplicated entries for hostA and hostB will merge to single one for each host
-                (2L, 2, 'US', 12252L, '2016-09-26', 'monthly', 2)
+                (2, 'US', 12252L, '2016-09-26', 'monthly', 2)
             ])
 
     def test_group_by_country(self):
