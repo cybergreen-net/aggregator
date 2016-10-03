@@ -1,11 +1,16 @@
 from __future__ import print_function
 
+from os.path import dirname, join
+
 import json
 import urllib
 import psycopg2
 import boto
 
-env = json.load(open('../.env.json'))
+def rpath(*args):
+    return join(dirname(__file__), *args)
+
+env = json.load(open(rpath('../.env.json')))
 
 tablename = 'logentry'
 

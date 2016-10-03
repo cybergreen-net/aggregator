@@ -13,11 +13,9 @@ from mock import patch
 from nose.plugins.attrib import attr
 import psycopg2
 
-os.chdir('load')
-
 from load import main
 
-env = json.load(open('../.env.test.json'))
+env = json.load(open('.env.test.json'))
 
 
 connection = psycopg2.connect(
@@ -30,7 +28,7 @@ connection = psycopg2.connect(
 
 
 class AggregationTestCase(unittest.TestCase):
-    # Test aggregation functions by week, place, risk, and scores calculation.
+    # Test aggregation functions by week, ip, place and risk.
 
     def setUp(self):
         # Patch main connection with the test one.
@@ -52,7 +50,7 @@ class AggregationTestCase(unittest.TestCase):
         # GIVEN 3 entries of the same asn, risk and country, two of which within one week
         ntp_scan_csv = dedent('''\
         ts,ip,risk_id,asn,cc
-        2016-09-20T00:00:01+00:00,71.3.0.0,2,12252,US
+        2016-09-20T00:00:01+00:00,71.3.0.1,2,12252,US
         2016-09-28T00:00:01+00:00,190.81.134.82,2,12252,US
         2016-09-29T00:00:01+00:00,190.81.135.11,2,12252,US
         ''')
@@ -71,16 +69,16 @@ class AggregationTestCase(unittest.TestCase):
             ])
     
     def test_group_by_distinct_ip(self):
-        # GIVEN 7 entries of the same asn, risk and country from hostA (71.3.0.0) and hostB (190.81.134)
+        # GIVEN 7 entries of the same asn, risk and country from hostA (71.3.0.1) and hostB (190.81.134)
         # First week: 2 hostA entries, 1 hostB entry
         # Second week: 2 hostA entries, 2 hostB entries
         ntp_scan_csv = dedent('''\
         ts,ip,risk_id,asn,cc
-        2016-09-20T00:00:01+00:00,71.3.0.0,2,12252,US
-        2016-09-20T00:00:01+00:00,71.3.0.0,2,12252,US
+        2016-09-20T00:00:01+00:00,71.3.0.1,2,12252,US
+        2016-09-20T00:00:01+00:00,71.3.0.1,2,12252,US
         2016-09-20T00:00:01+00:00,190.81.134.11,2,12252,US
-        2016-09-27T00:00:01+00:00,71.3.0.0,2,12252,US
-        2016-09-28T00:00:01+00:00,71.3.0.0,2,12252,US
+        2016-09-27T00:00:01+00:00,71.3.0.1,2,12252,US
+        2016-09-28T00:00:01+00:00,71.3.0.1,2,12252,US
         2016-09-28T00:00:01+00:00,190.81.134.11,2,12252,US
         2016-09-29T00:00:01+00:00,190.81.134.11,2,12252,US
         ''')
@@ -89,7 +87,7 @@ class AggregationTestCase(unittest.TestCase):
         # WHEN grouped entries get created
         main.create_count()
 
-        # THEN count table should have 2 entries which get grouped, and one entry which stands alone
+        # THEN count table should have 2 rows corresponding to weeks, with properly grouped entries
         self.cursor.execute('select * from count;')
         self.assertEqual(
             self.cursor.fetchall(),
@@ -99,6 +97,35 @@ class AggregationTestCase(unittest.TestCase):
 
                 # Second week: duplicated entries for hostA and hostB will merge to single one for each host
                 (2, 'US', 12252L, '2016-09-26', 'monthly', 2)
+            ])
+
+    def test_group_by_ip_week_distinct_risk(self):
+        # GIVEN 4 entries of the same asn, week and country from hostA (71.3.0.1) and hostB (190.81.134)
+        # hostA: 2 entries of the same risk type
+        # hostB: 2 entries of different risk type
+        ntp_scan_csv = dedent('''\
+        ts,ip,risk_id,asn,cc
+        2016-09-28T00:00:01+00:00,71.3.0.1,2,12252,US
+        2016-09-29T00:00:01+00:00,71.3.0.1,2,12252,US
+        2016-09-28T00:00:01+00:00,190.81.134.11,2,12252,US
+        2016-09-29T00:00:01+00:00,190.81.134.11,99,12252,US
+        ''')
+        self.cursor.copy_expert("COPY logentry from STDIN csv header", StringIO(ntp_scan_csv))
+
+        # WHEN grouped entries get created
+        main.create_count()
+
+        # THEN count table should have 2 rows corresponding to different risks, with properly grouped entries
+        self.cursor.execute('select * from count;')
+        self.assertEqual(
+            self.cursor.fetchall(),
+            [
+
+                # Risk type 99 - one entry from hostB
+                (1L, 99, 'US', 12252L, '2016-09-26', 'monthly', 1),
+
+                # Risk type 2 - 2 total count: one entry from hostB, and two from hostA, which grouped into one
+                (2L, 2, 'US', 12252L, '2016-09-26', 'monthly', 2)
             ])
 
     def test_group_by_country(self):
@@ -147,35 +174,3 @@ class AggregationTestCase(unittest.TestCase):
                 (7, '2016-09-26', 1L, 1L),
                 (2, '2016-09-26', 2L, 1L)   # 2 enreies grouped by risk
             ])
-
-    def test_scores(self):
-        # GIVEN 5 entries, of the same risk and week, two from US, and three from DE
-        ntp_scan_csv = dedent('''\
-        ts,ip,risk_id,asn,cc
-        2016-09-28T00:00:01+00:00,190.81.134.82,2,4444,US
-        2016-09-29T00:00:01+00:00,190.81.134.11,2,12252,US
-        2016-09-29T00:00:01+00:00,190.81.134.11,2,3333,DE
-        2016-09-29T00:00:01+00:00,190.81.134.33,2,3333,DE
-        2016-09-29T00:00:01+00:00,190.81.134.35,2,3333,DE
-        ''')
-        self.cursor.copy_expert("COPY logentry from STDIN csv header", StringIO(ntp_scan_csv))
-
-        # WHEN grouped entries get created
-        main.create_count()
-        main.create_count_by_country()
-        main.create_count_by_risk()
-        # AND score calcualted
-        main.update_with_scores()
-
-        # THEN count_by_country table should have proper scores
-        self.cursor.execute('select * from count_by_country;')
-        self.assertEqual(
-            self.cursor.fetchall(),
-            [
-                (2, 'DE', '2016-09-26', 3L, 100.0, 0),   # 100% score
-                (2, 'US', '2016-09-26', 2L, 63.093, 0)   # 63% score
-            ])
-
-
-
-

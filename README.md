@@ -73,20 +73,7 @@ $ sh load.sh
 $ pip install -r tests/requirements.txt
 ```
 
-#### 2. Create .env.json
-
-NOTE: this is only needed for older tests running on redshift directly.
-
-`.env.json` file should be placed in the git root dir, and have following keys defined to
-access redshift instance:
-
-* "REDSHIFT_PASSWORD" - redshift password
-* "REDSHIFT_USER" - user name
-* "REDSHIFT_DBNAME" - database name
-* "REDSHIFT_HOST" - redshift host address on amazon
-* "REDSHIFT_PORT" - redshift port (Currently using 5439)
-
-#### 3. Create local postgres user and database
+#### 2. Create local postgres user and database
 
 ```
 $ psql -U postgres -c "create user cg_test_user password 'secret' createdb;"
