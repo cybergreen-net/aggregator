@@ -42,7 +42,7 @@ def create_tables():
 			cursor.execute('DROP TABLE %s'%tablename)
 	create_count = """
 CREATE TABLE count
-(id bigint, risk int, country varchar(2), asn bigint, date date, period_type varchar(8), count int);
+(id SERIAL PRIMARY KEY, risk int, country varchar(2), asn bigint, date date, period_type varchar(8), count int);
 """
 	create_count_by_country = """
 CREATE TABLE count_by_country
