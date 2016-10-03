@@ -122,10 +122,10 @@ class AggregationTestCase(unittest.TestCase):
             [
 
                 # Risk type 99 - one entry from hostB
-                (1L, 99, 'US', 12252L, '2016-09-26', 'monthly', 1),
+                (99, 'US', 12252L, '2016-09-26', 'monthly', 1),
 
                 # Risk type 2 - 2 total count: one entry from hostB, and two from hostA, which grouped into one
-                (2L, 2, 'US', 12252L, '2016-09-26', 'monthly', 2)
+                (2, 'US', 12252L, '2016-09-26', 'monthly', 2)
             ])
 
     def test_group_by_country(self):
