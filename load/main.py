@@ -92,7 +92,6 @@ def create_count():
         print('Drop table %s'%(tablename))
     create = """
 CREATE TABLE %s (
-id bigint PRIMARY KEY,
 risk int,
 country varchar(2),
 asn  bigint,
