@@ -58,25 +58,24 @@ CREATE TABLE count_by_risk
 	connRDS.commit();
 
 def create_indexes():
-    cursor = connRDS.cursor()
-    idx_dict = {
-        # Index to speedup /api/v1/count
-        "idx_total_count": "CREATE INDEX idx_total_count ON count (date, country, risk, asn, period_type);",
-        # Index to speedup /api/v1/count when asn is given
-        "idx asn": "CREATE INDEX idx_asn ON count (asn);",
-
-        "idx_country": "CREATE INDEX idx_country ON count(country);",
-        "idx_asn": "CREATE INDEX idx_asn ON count(asn);",
-        "idx_date": "CREATE INDEX idx_date ON count(date);",
-        "idx_date_cbc": "CREATE INDEX idx_date_cbc ON count_by_country(date);",
-        "idx_risk_cbc": "CREATE INDEX idx_risk_cbc ON count_by_country(risk);",
-        "idx_country_cbc": "CREATE INDEX idx_country_cbc ON count_by_country(country);",
-        "idx_risk_cbr": "CREATE INDEX idx_risk_cbr ON count_by_risk(risk);",
-        "idx_date_cbc": "CREATE INDEX idx_date_cbr ON count_by_risk(date);",
-    }
-    for idx in idx_dict:
-        cursor.execute(idx_dict[idx])
-    connRDS.commit()
+	cursor = connRDS.cursor()
+	idx_dict = {
+		# Index to speedup /api/v1/count
+		"idx_total_count": "CREATE INDEX idx_total_count ON count (date, country, risk, asn, period_type);",
+		# Index to speedup /api/v1/count when asn is given
+		"idx_asn": "CREATE INDEX idx_asn ON count (asn);",
+		"idx_all_desc": "create index idx_all_desc on count (date DESC, country, risk, asn, period_type);",
+		"idx_country": "CREATE INDEX idx_country ON count(country);",
+		"idx_date": "CREATE INDEX idx_date ON count(date);",
+		"idx_date_cbc": "CREATE INDEX idx_date_cbc ON count_by_country(date);",
+		"idx_risk_cbc": "CREATE INDEX idx_risk_cbc ON count_by_country(risk);",
+		"idx_country_cbc": "CREATE INDEX idx_country_cbc ON count_by_country(country);",
+		"idx_risk_cbr": "CREATE INDEX idx_risk_cbr ON count_by_risk(risk);",
+		"idx_date_cbc": "CREATE INDEX idx_date_cbr ON count_by_risk(date);",
+		}
+	for idx in idx_dict:
+		cursor.execute(idx_dict[idx])
+	connRDS.commit()
 
 if __name__ == '__main__':
 	download()
