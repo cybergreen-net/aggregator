@@ -1,8 +1,11 @@
 import boto3
 import json
 import psycopg2
-import os
+from os.path import join
 import csv
+import subprocess
+import tempfile
+import shutil
 
 env = json.load(open('../.env.json'))
 
@@ -22,12 +25,12 @@ connRDS = psycopg2.connect(
 	port=5432
 	)
 
-def download():
+def download(tmp):
 	s3bucket = 'bits.cybergreen.net'
 	s3paths = [
-		('tmp/count.csv','stats/latest/count000'), 
-		('tmp/country.csv','stats/latest/country000'), 
-		('tmp/risk.csv','stats/latest/risk000')
+		(join(tmp,'count.csv'),'stats/latest/count000'), 
+		(join(tmp,'country.csv'),'stats/latest/country000'), 
+		(join(tmp,'risk.csv'),'stats/latest/risk000')
 	]
 	bucket = conns3.Bucket(s3bucket)
 	for path in s3paths: 
@@ -42,7 +45,7 @@ def create_tables():
 			cursor.execute('DROP TABLE %s'%tablename)
 	create_count = """
 CREATE TABLE count
-(id SERIAL PRIMARY KEY, risk int, country varchar(2), asn bigint, date date, period_type varchar(8), count int);
+(risk int, country varchar(2), asn bigint, date date, period_type varchar(8), count int);
 """
 	create_count_by_country = """
 CREATE TABLE count_by_country
@@ -78,6 +81,9 @@ def create_indexes():
 	connRDS.commit()
 
 if __name__ == '__main__':
-	download()
+	tmpdir = tempfile.mkdtemp()
+	download(tmpdir)
 	create_tables()
+	subprocess.call(['bash','load.sh',tmpdir])
 	create_indexes()
+	shutil.rmtree(tmpdir)
