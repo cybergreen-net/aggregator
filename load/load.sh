@@ -21,4 +21,4 @@ cg-stats-dev.crovisjepxcd.eu-west-1.rds.amazonaws.com \
 -U cybergreen \
 -d frontend \
 -p 5432 \
--c "\COPY count FROM $tmpdir/count.csv WITH delimiter as ',' null '' csv;"
+-c "\COPY count FROM $TMPDIR/count.csv WITH delimiter as ',' null '' csv;"
