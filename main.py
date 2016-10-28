@@ -14,7 +14,7 @@ import boto3
 def rpath(*args):
     return join(dirname(__file__), *args)
 
-env = json.load(open(rpath('../.env.json')))
+env = json.load(open(rpath('.env.json')))
 # AWS credentials
 AWS_ACCESS_KEY = env['AWS_ACCESS_KEY']
 AWS_ACCESS_SECRET_KEY = env['AWS_ACCESS_SECRET_KEY']

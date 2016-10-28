@@ -13,7 +13,7 @@ from mock import patch
 from nose.plugins.attrib import attr
 import psycopg2
 
-from load import main
+import main
 
 env = json.load(open('.env.test.json'))
 
@@ -32,7 +32,7 @@ class AggregationTestCase(unittest.TestCase):
 
     def setUp(self):
         # Patch main connection with the test one.
-        patch('load.main.connection', connection).start()
+        patch('main.connection', connection).start()
 
         # Set isolation level to run CREATE DATABASE statement outside of transactions.
         main.connection.set_isolation_level(psycopg2.extensions.ISOLATION_LEVEL_AUTOCOMMIT)
