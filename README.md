@@ -32,7 +32,7 @@ Install tooling:
 "REDSHIFT_PASSWORD": <<passwordForRedshift>>,
 "RDS_PASSWORD": <<passwordForRDS>>, 
 "AWS_ACCESS_KEY": <<AwsAccessKeYGoesHERE>>,
-"AWS_ACCESS_SECRET_KEY": <<AwsAccessSEcretKeYGoesHerE>,
+"AWS_ACCESS_SECRET_KEY": <<AwsAccessSEcretKeYGoesHerE>>,
 "REDSHIFT_USER": "cybergreen",
 "REDSHIFT_DBNAME": "dev",
 "REDSHIFT_HOST": "cg-analytics.cqxchced59ta.eu-west-1.redshift.amazonaws.com",
@@ -60,7 +60,7 @@ psql -h cg-analytics.cqxchced59ta.eu-west-1.redshift.amazonaws.com --port 5439 -
 
 ```
 cd load
-$ sh load.sh
+$ python fromS3toRDS.py
 ```
 
 ## Testing
