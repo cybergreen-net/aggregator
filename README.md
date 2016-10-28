@@ -12,8 +12,7 @@ Aggregator for CyberGreen risk data.
 
 private-bits-cybergreen-net/dev/clean/...
 
-Example - from OpenNTP data - note header is added (missing in original data)
-
+Example - from OpenNTP data
 ```
 date,risk,ip,asn,place
 2016-08-05 02:00:06.0+00,2,69.2.0.0,27005,US
@@ -38,29 +37,24 @@ Install tooling:
 "REDSHIFT_HOST": "cg-analytics.cqxchced59ta.eu-west-1.redshift.amazonaws.com",
 "REDSHIFT_PORT": 5439
 }
-
-## Load, aggregate to Redshift and unload the Data to s3
-
 ```
 
-Load
+## To aggregate data and Load to RDS db
 ```
-cd load
+$ cd load
 # probably want to setup a virtual env first ...
-pip install -r requirements.txt
-python main.py
+$ pip install -r requirements.txt
+$ python main.py
 ```
 
-If you want, you can access Redshift directly via psql to take a look at the data:
+If you want, you can access Redshift or RDS directly via psql to take a look at the data:
 
 ```
-psql -h cg-analytics.cqxchced59ta.eu-west-1.redshift.amazonaws.com --port 5439 --user cybergreen -d dev
-```
-## Load data to RDS
+# Redshift
+$ psql -h cg-analytics.cqxchced59ta.eu-west-1.redshift.amazonaws.com --port 5439 --user cybergreen -d dev
+# RDS
+$ psql -h cg-stats-dev.crovisjepxcd.eu-west-1.rds.amazonaws.com -U cybergreen -d frontend -p 5432
 
-```
-cd load
-$ python fromS3toRDS.py
 ```
 
 ## Testing
