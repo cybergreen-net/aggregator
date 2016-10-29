@@ -18,7 +18,13 @@ env = json.load(open(rpath('.env.json')))
 # AWS credentials
 AWS_ACCESS_KEY = env['AWS_ACCESS_KEY']
 AWS_ACCESS_SECRET_KEY = env['AWS_ACCESS_SECRET_KEY']
-PASSWORD = env['RDS_PASSWORD']
+
+SOURCE_S3_BUCKET = env['SOURCE_S3_BUCKET']
+SOURCE_S3_KEY = env['SOURCE_S3_KEY']
+DEST_S3_BUCKET = env['DEST_S3_BUCKET']
+DEST_S3_KEY= env['DEST_S3_KEY']
+
+REDSHIFT_ROLE_ARN = env['REDSHIFT_ROLE_ARN']
 
 tablename = 'logentry'
 
@@ -47,12 +53,12 @@ conns3 = boto3.resource('s3',
 	aws_secret_access_key=AWS_ACCESS_SECRET_KEY)
 # RDS connection
 connRDS = psycopg2.connect(
-	database='frontend',
-	user='cybergreen',
-	password=PASSWORD,
-	host='cg-stats-dev.crovisjepxcd.eu-west-1.rds.amazonaws.com',
-	port=5432
-	)
+    database=env['RDS_DBNAME'],
+    user=env['RDS_USER'],
+    password=env['RDS_PASSWORD'],
+    host=env['RDS_HOST'],
+    port=env['RDS_PORT']
+    )
 
 def get_manifest():
 	
@@ -61,8 +67,8 @@ def get_manifest():
 		aws_secret_access_key = AWS_ACCESS_SECRET_KEY
 		)
 	
-	s3bucket = 'private-bits-cybergreen-net'
-	key = 'dev/clean/datapackage.json'
+	s3bucket = SOURCE_S3_BUCKET
+	key = join(SOURCE_S3_KEY, 'datapackage.json')
 	bucket = conn.get_bucket(s3bucket)
 	key = bucket.get_key(key)
 	datapackage = key.get_contents_as_string()
@@ -71,31 +77,30 @@ def get_manifest():
 	keys = (p['path'] for p in datapackage['resources'])
 	for key_list in keys:
 		for key in key_list:
-			manifest['entries'].append({"url": "s3://private-bits-cybergreen-net/dev/clean/"+key, "mandatory": True})
+			manifest['entries'].append({"url": join("s3://",SOURCE_S3_BUCKET,SOURCE_S3_KEY,key), "mandatory": True})
 	f = open('clean.manifest', 'w')
 	json.dump(manifest, f)
 	f.close()
 	
 	k = boto.s3.key.Key(bucket)
-	k.key = 'dev/clean/clean.manifest'
+	k.key = SOURCE_S3_KEY+'clean.manifest'
 	k.set_contents_from_filename('clean.manifest')
 
 ### LOAD, AGGREGATION, UNLOAD
 def create_table():
-	#CREATE REDSHIFT TABLE WHEN CSV FILE UPLOADED
-	cursor = connection.cursor();
-	cursor.execute("select exists(select * from information_schema.tables where table_name=%s)", (tablename,))
-
-	if (cursor.fetchone()[0]):
-		print('Table already exists')
-		return
-	else:
-		cursor.execute(create_table_name)
-		connection.commit();
+    #CREATE REDSHIFT TABLE WHEN CSV FILE UPLOADED
+    cursor = connection.cursor();
+    cursor.execute("select exists(select * from information_schema.tables where table_name=%s)", (tablename,))
+    
+    if (cursor.fetchone()[0]):
+        cursor.execute("DROP TABLE %s" % (tablename))
+    
+    cursor.execute(create_table_name)
+    connection.commit();
 
 def load_data():
-	role_arn = 'arn:aws:iam::635396214416:role/RedshiftCopyUnload'
-	manifest = 's3://private-bits-cybergreen-net/dev/clean/clean.manifest'
+	role_arn = REDSHIFT_ROLE_ARN
+	manifest = join('s3://', SOURCE_S3_BUCKET, SOURCE_S3_KEY,'clean.manifest')
 	cursor = connection.cursor()
 	copycmd = '''
 COPY %s FROM '%s'
@@ -214,13 +219,13 @@ WHERE {0}.risk = {1}.risk AND {0}.date = {1}.date;
 	connection.commit()
 	
 def unload(table, s3path):
-	cursor = connection.cursor();
-	role_arn = 'arn:aws:iam::635396214416:role/RedshiftCopyUnload'
-	s3bucket = 's3://bits.cybergreen.net'
-	aws_auth_args = 'aws_access_key_id=%s;aws_secret_access_key=%s'%(env['AWS_ACCESS_KEY'], env['AWS_ACCESS_SECRET_KEY'])
-	s3path = s3bucket + s3path
-	print('Unloading datata to S3')
-	cursor.execute("""
+    cursor = connection.cursor();
+    role_arn = REDSHIFT_ROLE_ARN
+    s3bucket = join("s3://", DEST_S3_BUCKET)
+    aws_auth_args = 'aws_access_key_id=%s;aws_secret_access_key=%s'%(AWS_ACCESS_KEY, AWS_ACCESS_SECRET_KEY)
+    s3path = join(s3bucket, s3path)
+    print('Unloading datata to S3')
+    cursor.execute("""
 UNLOAD('SELECT * FROM %s')
 TO '%s'
 CREDENTIALS '%s'
@@ -228,35 +233,35 @@ DELIMITER AS ','
 ALLOWOVERWRITE
 PARALLEL OFF;
 """%(table, s3path, aws_auth_args))
-	print('Unload Successfully')
+    print('Unload Successfully')
 
 
 ### LOAD FROM S3 TO RDS
 copy_commands = """
-export PGPASSWORD={1}
+export PGPASSWORD={password}
 psql -h \
-cg-stats-dev.crovisjepxcd.eu-west-1.rds.amazonaws.com \
+{host} \
 -U cybergreen -d frontend -p 5432 \
--c "\COPY count_by_risk FROM {0}/risk.csv WITH delimiter as ',' null '' csv;"
+-c "\COPY count_by_risk FROM {tmp}/risk.csv WITH delimiter as ',' null '' csv;"
 
 psql -h \
-cg-stats-dev.crovisjepxcd.eu-west-1.rds.amazonaws.com \
+{host} \
 -U cybergreen -d frontend -p 5432 \
--c "\COPY count_by_country FROM {0}/country.csv WITH delimiter as ',' null '' csv;"
+-c "\COPY count_by_country FROM {tmp}/country.csv WITH delimiter as ',' null '' csv;"
 
 psql -h \
-cg-stats-dev.crovisjepxcd.eu-west-1.rds.amazonaws.com \
+{host} \
 -U cybergreen -d frontend -p 5432 \
--c "\COPY count FROM {0}/count.csv WITH delimiter as ',' null '' csv;"
+-c "\COPY count FROM {tmp}/count.csv WITH delimiter as ',' null '' csv;"
 """
 
 
 def download(tmp):
-	s3bucket = 'bits.cybergreen.net'
+	s3bucket = DEST_S3_BUCKET
 	s3paths = [
-		(join(tmp,'count.csv'),'stats/latest/count000'), 
-		(join(tmp,'country.csv'),'stats/latest/country000'), 
-		(join(tmp,'risk.csv'),'stats/latest/risk000')
+		(join(tmp,'count.csv'),join(DEST_S3_KEY,'count000')), 
+		(join(tmp,'country.csv'),join(DEST_S3_KEY,'country000')), 
+		(join(tmp,'risk.csv'),join(DEST_S3_KEY,'risk000'))
 	]
 	bucket = conns3.Bucket(s3bucket)
 	for path in s3paths: 
@@ -319,9 +324,9 @@ if __name__ == '__main__':
     update_with_scores()
     # this needs to be automated 
     table_keys = {
-    'count': '/stats/latest/count',
-    'count_by_country': '/stats/latest/country',
-    'count_by_risk': '/stats/latest/risk'
+        'count': join(DEST_S3_KEY,'count'),
+        'count_by_country': join(DEST_S3_KEY,'country'),
+        'count_by_risk': join(DEST_S3_KEY,'risk')
     }
     for table in table_keys:
         unload(table, table_keys[table])
@@ -330,6 +335,6 @@ if __name__ == '__main__':
     print("Loading to RDS")
     download(tmpdir)
     create_tables()
-    os.system(copy_commands.format(tmpdir, PASSWORD))
+    os.system(copy_commands.format(tmp=tmpdir, password=env['RDS_PASSWORD'], host=env['RDS_HOST']))
     create_indexes()
     shutil.rmtree(tmpdir)
