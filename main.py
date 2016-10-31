@@ -235,6 +235,16 @@ PARALLEL OFF;
 """%(table, s3path, aws_auth_args))
     print('Unload Successfully')
 
+def add_extention(key):
+    copy_source = {
+        'Bucket': DEST_S3_BUCKET,
+        'Key': key
+    }
+    new_key = '%s.csv'%(key.split('0')[0])
+    conns3.meta.client.copy(copy_source, DEST_S3_BUCKET, new_key)
+
+def delete_key(key):
+    conns3.Object(DEST_S3_BUCKET, key).delete()
 
 ### LOAD FROM S3 TO RDS
 copy_commands = """
@@ -259,9 +269,9 @@ psql -h \
 def download(tmp):
 	s3bucket = DEST_S3_BUCKET
 	s3paths = [
-		(join(tmp,'count.csv'),join(DEST_S3_KEY,'count000')), 
-		(join(tmp,'country.csv'),join(DEST_S3_KEY,'country000')), 
-		(join(tmp,'risk.csv'),join(DEST_S3_KEY,'risk000'))
+		(join(tmp,'count.csv'),join(DEST_S3_KEY,'count.csv')), 
+		(join(tmp,'country.csv'),join(DEST_S3_KEY,'country.csv')), 
+		(join(tmp,'risk.csv'),join(DEST_S3_KEY,'risk.csv'))
 	]
 	bucket = conns3.Bucket(s3bucket)
 	for path in s3paths: 
@@ -329,7 +339,9 @@ if __name__ == '__main__':
         'count_by_risk': join(DEST_S3_KEY,'risk')
     }
     for table in table_keys:
-        unload(table, table_keys[table])
+        unload(table, table_keys[table])    
+        add_extention('%s000'%(table_keys[table]))
+        delete_key('%s000'%(table_keys[table]))
     # LOAD TO RDS
     tmpdir = tempfile.mkdtemp()
     print("Loading to RDS")
