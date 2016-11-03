@@ -19,11 +19,12 @@ env = json.load(open(rpath('.env.json')))
 AWS_ACCESS_KEY = env['AWS_ACCESS_KEY']
 AWS_ACCESS_SECRET_KEY = env['AWS_ACCESS_SECRET_KEY']
 
+STAGE= env['STAGE']
 SOURCE_S3_BUCKET = env['SOURCE_S3_BUCKET']
-SOURCE_S3_KEY = env['SOURCE_S3_KEY']
+SOURCE_S3_KEY = join(STAGE,env['SOURCE_S3_KEY'])
 DEST_S3_BUCKET = env['DEST_S3_BUCKET']
-DEST_S3_KEY= env['DEST_S3_KEY']
-
+DEST_S3_KEY= join(STAGE,env['DEST_S3_KEY'])
+REFERENCE_KEY = join(STAGE, env['REFERENCE_KEY'])
 REDSHIFT_ROLE_ARN = env['REDSHIFT_ROLE_ARN']
 
 tablename = 'logentry'
@@ -41,7 +42,7 @@ CREATE TABLE %s (
 print('Connecting ...')
 # Redshift connection
 connection = psycopg2.connect(
-    database=env['REDSHIFT_DBNAME'],
+    database=STAGE,
     user=env['REDSHIFT_USER'],
     password=env['REDSHIFT_PASSWORD'],
     host=env['REDSHIFT_HOST'],
@@ -53,7 +54,7 @@ conns3 = boto3.resource('s3',
 	aws_secret_access_key=AWS_ACCESS_SECRET_KEY)
 # RDS connection
 connRDS = psycopg2.connect(
-    database=env['RDS_DBNAME'],
+    database=STAGE,
     user=env['RDS_USER'],
     password=env['RDS_PASSWORD'],
     host=env['RDS_HOST'],
@@ -249,57 +250,94 @@ def delete_key(key):
 ### LOAD FROM S3 TO RDS
 copy_commands = """
 export PGPASSWORD={password}
+
 psql -h \
 {host} \
--U cybergreen -d frontend -p 5432 \
+-U cybergreen -d {db} -p 5432 \
+-c "\COPY risk FROM {tmp}/ref_risk.csv WITH delimiter as ',' null '' csv header;"
+
+psql -h \
+{host} \
+-U cybergreen -d {db} -p 5432 \
+-c "\COPY country FROM {tmp}/ref_country.csv WITH delimiter as ',' null '' csv header;"
+
+psql -h \
+{host} \
+-U cybergreen -d {db} -p 5432 \
+-c "\COPY country_asn FROM {tmp}/ref_country_asn.csv WITH delimiter as ',' null '' csv header;"
+
+psql -h \
+{host} \
+-U cybergreen -d {db} -p 5432 \
 -c "\COPY count_by_risk FROM {tmp}/risk.csv WITH delimiter as ',' null '' csv;"
 
 psql -h \
 {host} \
--U cybergreen -d frontend -p 5432 \
+-U cybergreen -d {db} -p 5432 \
 -c "\COPY count_by_country FROM {tmp}/country.csv WITH delimiter as ',' null '' csv;"
 
 psql -h \
 {host} \
--U cybergreen -d frontend -p 5432 \
+-U cybergreen -d {db} -p 5432 \
 -c "\COPY count FROM {tmp}/count.csv WITH delimiter as ',' null '' csv;"
 """
 
 
 def download(tmp):
-	s3bucket = DEST_S3_BUCKET
-	s3paths = [
-		(join(tmp,'count.csv'),join(DEST_S3_KEY,'count.csv')), 
-		(join(tmp,'country.csv'),join(DEST_S3_KEY,'country.csv')), 
-		(join(tmp,'risk.csv'),join(DEST_S3_KEY,'risk.csv'))
-	]
-	bucket = conns3.Bucket(s3bucket)
-	for path in s3paths: 
-		bucket.download_file(path[1], path[0])
-		
+    s3bucket = DEST_S3_BUCKET
+    s3paths = [
+        (join(tmp,'count.csv'),join(DEST_S3_KEY,'count.csv')), 
+        (join(tmp,'country.csv'),join(DEST_S3_KEY,'country.csv')), 
+        (join(tmp,'risk.csv'),join(DEST_S3_KEY,'risk.csv')),
+        (join(tmp,'ref_risk.csv'),join(REFERENCE_KEY,'risk.csv')),
+        (join(tmp,'ref_country.csv'),join(REFERENCE_KEY,'country.csv')),
+        (join(tmp,'ref_country_asn.csv'),join(REFERENCE_KEY,'asn.csv'))
+    ]
+    bucket = conns3.Bucket(s3bucket)
+    for path in s3paths: 
+        bucket.download_file(path[1], path[0])
+        
 def create_tables():	
-	cursor = connRDS.cursor();
-	tablenames = ['count', 'count_by_country', 'count_by_risk']
-	for tablename in tablenames:
-		cursor.execute("select exists(SELECT * FROM information_schema.tables WHERE table_name='%s')"%tablename)	
-		if cursor.fetchone()[0]:
-			cursor.execute('DROP TABLE %s'%tablename)
-	create_count = """
+    cursor = connRDS.cursor();
+    tablenames = [
+        'count', 'count_by_country', 'count_by_risk',
+        'risk', 'country', 'country_asn'
+    ]
+    for tablename in tablenames:
+        cursor.execute("select exists(SELECT * FROM information_schema.tables WHERE table_name='%s')"%tablename)	
+        if cursor.fetchone()[0]:
+            cursor.execute('DROP TABLE %s'%tablename)
+    create_count = """
 CREATE TABLE count
 (risk int, country varchar(2), asn bigint, date date, period_type varchar(8), count int);
 """
-	create_count_by_country = """
+    create_count_by_country = """
 CREATE TABLE count_by_country
 (risk int, country varchar(2), date date, count bigint, score real, rank int);
 """
-	create_count_by_risk = """
+    create_count_by_risk = """
 CREATE TABLE count_by_risk
 (risk int,  date date, count bigint, max bigint);
 """
-	cursor.execute(create_count)
-	cursor.execute(create_count_by_country)
-	cursor.execute(create_count_by_risk)
-	connRDS.commit();
+    create_risk = """
+CREATE TABLE risk
+(id varchar(16),  risk_id int, title varchar(32), category text, description text);
+"""
+    create_country= """
+CREATE TABLE country
+(id varchar(2),name varchar(32),slug varchar(32),region varchar(32),continent varchar(32));
+"""
+    create_country_asn = """
+CREATE TABLE country_asn
+(country varchar(2),  asn varchar(10), date date);
+"""
+    cursor.execute(create_risk)
+    cursor.execute(create_country)
+    cursor.execute(create_country_asn)
+    cursor.execute(create_count)
+    cursor.execute(create_count_by_country)
+    cursor.execute(create_count_by_risk)
+    connRDS.commit();
 
 def create_indexes():
 	cursor = connRDS.cursor()
@@ -327,30 +365,30 @@ def create_indexes():
 
 if __name__ == '__main__':
     # AGGREGATION
-    get_manifest()
-    create_table()
-    load_data()
-    count_data()
-    create_count()
-    create_count_by_country()
-    create_count_by_risk()
-    update_with_scores()
-    # this needs to be automated 
-    table_keys = {
-        'count': join(DEST_S3_KEY,'count'),
-        'count_by_country': join(DEST_S3_KEY,'country'),
-        'count_by_risk': join(DEST_S3_KEY,'risk')
-    }
-    for table in table_keys:
-        unload(table, table_keys[table])    
-        add_extention('%s000'%(table_keys[table]))
-        delete_key('%s000'%(table_keys[table]))
-    print("Unloading datata to S3")
-    # LOAD TO RDS
-    tmpdir = tempfile.mkdtemp()
-    print("Loading to RDS")
-    download(tmpdir)
-    create_tables()
-    os.system(copy_commands.format(tmp=tmpdir, password=env['RDS_PASSWORD'], host=env['RDS_HOST']))
+    # get_manifest()
+    # create_table()
+    # load_data()
+    # count_data()
+    # create_count()
+    # create_count_by_country()
+    # create_count_by_risk()
+    # update_with_scores()
+    # # this needs to be automated 
+    # table_keys = {
+    #     'count': join(DEST_S3_KEY,'count'),
+    #     'count_by_country': join(DEST_S3_KEY,'country'),
+    #     'count_by_risk': join(DEST_S3_KEY,'risk')
+    # }
+    # for table in table_keys:
+    #     unload(table, table_keys[table])    
+    #     add_extention('%s000'%(table_keys[table]))
+    #     delete_key('%s000'%(table_keys[table]))
+    # print("Unloading datata to S3")
+    # # LOAD TO RDS
+    # tmpdir = tempfile.mkdtemp()
+    # print("Loading to RDS")
+    # download(tmpdir)
+    # create_tables()
+    # os.system(copy_commands.format(tmp=tmpdir, password=env['RDS_PASSWORD'], host=env['RDS_HOST'], db=STAGE))
     create_indexes()
-    shutil.rmtree(tmpdir)
+    # shutil.rmtree(tmpdir)
