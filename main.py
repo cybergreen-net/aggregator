@@ -211,7 +211,9 @@ def update_with_scores():
 	countrytable = 'count_by_country'
 	query = """
 UPDATE {0}
-SET score = 100 * ( LOG({0}.count) / LOG({1}.max) )
+SET score =
+CASE WHEN  LOG({1}.max) = 0 THEN 100
+ELSE 100 * (LOG({0}.count) / LOG({1}.max)) END
 FROM {1}
 WHERE {0}.risk = {1}.risk AND {0}.date = {1}.date;
 """.format(countrytable, risktable)
@@ -224,7 +226,6 @@ def unload(table, s3path):
     s3bucket = join("s3://", DEST_S3_BUCKET)
     aws_auth_args = 'aws_access_key_id=%s;aws_secret_access_key=%s'%(AWS_ACCESS_KEY, AWS_ACCESS_SECRET_KEY)
     s3path = join(s3bucket, s3path)
-    print('Unloading datata to S3')
     cursor.execute("""
 UNLOAD('SELECT * FROM %s')
 TO '%s'
@@ -233,8 +234,7 @@ DELIMITER AS ','
 ALLOWOVERWRITE
 PARALLEL OFF;
 """%(table, s3path, aws_auth_args))
-    print('Unload Successfully')
-
+    
 def add_extention(key):
     copy_source = {
         'Bucket': DEST_S3_BUCKET,
@@ -306,9 +306,12 @@ def create_indexes():
 	idx_dict = {
 		# Index to speedup /api/v1/count
 		"idx_total_count": "CREATE INDEX idx_total_count ON count (date, country, risk, asn, period_type);",
+		"idx_all_desc": "create index idx_all_date_desc on count (date DESC, country, risk, asn, period_type);",
+		"idx_all_desc": "create index idx_all_country_desc on count (date, country ASC, risk, asn, period_type);",
+		"idx_all_desc": "create index idx_all_risk_desc on count (date, country, risk ASC, asn, period_type);",
+		"idx_all_desc": "create index idx_all__asn_desc on count (date, country, risk, asn ASC, period_type);",
 		# Index to speedup /api/v1/count when asn is given
 		"idx_asn": "CREATE INDEX idx_asn ON count (asn);",
-		"idx_all_desc": "create index idx_all_desc on count (date DESC, country, risk, asn, period_type);",
 		"idx_country": "CREATE INDEX idx_country ON count(country);",
 		"idx_date": "CREATE INDEX idx_date ON count(date);",
 		"idx_date_cbc": "CREATE INDEX idx_date_cbc ON count_by_country(date);",
@@ -342,6 +345,7 @@ if __name__ == '__main__':
         unload(table, table_keys[table])    
         add_extention('%s000'%(table_keys[table]))
         delete_key('%s000'%(table_keys[table]))
+    print("Unloading datata to S3")
     # LOAD TO RDS
     tmpdir = tempfile.mkdtemp()
     print("Loading to RDS")
