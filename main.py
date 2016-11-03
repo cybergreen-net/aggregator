@@ -365,30 +365,30 @@ def create_indexes():
 
 if __name__ == '__main__':
     # AGGREGATION
-    # get_manifest()
-    # create_table()
-    # load_data()
-    # count_data()
-    # create_count()
-    # create_count_by_country()
-    # create_count_by_risk()
-    # update_with_scores()
-    # # this needs to be automated 
-    # table_keys = {
-    #     'count': join(DEST_S3_KEY,'count'),
-    #     'count_by_country': join(DEST_S3_KEY,'country'),
-    #     'count_by_risk': join(DEST_S3_KEY,'risk')
-    # }
-    # for table in table_keys:
-    #     unload(table, table_keys[table])    
-    #     add_extention('%s000'%(table_keys[table]))
-    #     delete_key('%s000'%(table_keys[table]))
-    # print("Unloading datata to S3")
-    # # LOAD TO RDS
-    # tmpdir = tempfile.mkdtemp()
-    # print("Loading to RDS")
-    # download(tmpdir)
-    # create_tables()
-    # os.system(copy_commands.format(tmp=tmpdir, password=env['RDS_PASSWORD'], host=env['RDS_HOST'], db=STAGE))
+    get_manifest()
+    create_table()
+    load_data()
+    count_data()
+    create_count()
+    create_count_by_country()
+    create_count_by_risk()
+    update_with_scores()
+    # this needs to be automated 
+    table_keys = {
+        'count': join(DEST_S3_KEY,'count'),
+        'count_by_country': join(DEST_S3_KEY,'country'),
+        'count_by_risk': join(DEST_S3_KEY,'risk')
+    }
+    for table in table_keys:
+        unload(table, table_keys[table])    
+        add_extention('%s000'%(table_keys[table]))
+        delete_key('%s000'%(table_keys[table]))
+    print("Unloading datata to S3")
+    # LOAD TO RDS
+    tmpdir = tempfile.mkdtemp()
+    print("Loading to RDS")
+    download(tmpdir)
+    create_tables()
+    os.system(copy_commands.format(tmp=tmpdir, password=env['RDS_PASSWORD'], host=env['RDS_HOST'], db=STAGE))
     create_indexes()
-    # shutil.rmtree(tmpdir)
+    shutil.rmtree(tmpdir)
