@@ -344,10 +344,7 @@ def create_indexes():
 	idx_dict = {
 		# Index to speedup /api/v1/count
 		"idx_total_count": "CREATE INDEX idx_total_count ON count (date, country, risk, asn, period_type);",
-		"idx_all_desc": "create index idx_all_date_desc on count (date DESC, country, risk, asn, period_type);",
-		"idx_all_desc": "create index idx_all_country_desc on count (date, country ASC, risk, asn, period_type);",
-		"idx_all_desc": "create index idx_all_risk_desc on count (date, country, risk ASC, asn, period_type);",
-		"idx_all_desc": "create index idx_all__asn_desc on count (date, country, risk, asn ASC, period_type);",
+		"idx_all_desc": "CREATE INDEX idx_all_date_desc on count (date DESC, country, risk, asn, period_type);",
 		# Index to speedup /api/v1/count when asn is given
 		"idx_asn": "CREATE INDEX idx_asn ON count (asn);",
 		"idx_country": "CREATE INDEX idx_country ON count(country);",
