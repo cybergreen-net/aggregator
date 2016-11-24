@@ -136,14 +136,14 @@ risk int,
 country varchar(2),
 asn  bigint,
 date varchar(16),
-period_tipe varchar(8),
+period_type varchar(8),
 count int
 )
 """ % (tablename)
     cursor.execute(create)
     connection.commit()
     query = """
-INSERT INTO %s(risk, country, asn, date, period_tipe, count)
+INSERT INTO %s(risk, country, asn, date, period_type, count)
 (SELECT risk, place as country, asn, TO_CHAR(date, 'YYYY-MM-DD') as date, 'monthly', count(*) as count FROM 
 (SELECT DISTINCT (ip), date_trunc('week', date) AS date, risk, asn, place FROM %s) AS foo 
 GROUP BY TO_CHAR(date, 'YYYY-MM-DD'), asn, risk, place);
