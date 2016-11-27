@@ -8,7 +8,6 @@ import shutil
 import json
 import urllib
 import psycopg2
-import boto
 import boto3
 
 def rpath(*args):
@@ -70,26 +69,21 @@ def create_manifest(datapackage,s3_bucket,s3_key):
             manifest['entries'].append({"url": join("s3://",s3_bucket,s3_key,key), "mandatory": True})
     return manifest
 
-def get_manifest():
-    conn = boto.connect_s3(
-        aws_access_key_id = AWS_ACCESS_KEY,
-        aws_secret_access_key = AWS_ACCESS_SECRET_KEY
-        )
-    
+def upload_manifest(tmp_dir):
+    tmp_manifest = join(tmp_dir,'clean.manifest')
     s3bucket = SOURCE_S3_BUCKET
     key = join(SOURCE_S3_KEY, 'datapackage.json')
-    bucket = conn.get_bucket(s3bucket)
-    key = bucket.get_key(key)
-    datapackage = key.get_contents_as_string()
+    obj = conns3.Object(s3bucket, key)
+    datapackage = obj.get()['Body'].read()
     manifest = create_manifest(datapackage,SOURCE_S3_BUCKET,SOURCE_S3_KEY)
-    f = open('clean.manifest', 'w')
+    
+    f = open(tmp_manifest, 'w')
     json.dump(manifest, f)
     f.close()
     
-    k = boto.s3.key.Key(bucket)
-    k.key = SOURCE_S3_KEY+'clean.manifest'
-    k.set_contents_from_filename('clean.manifest')
-    os.remove('clean.manifest')
+    key = join(SOURCE_S3_KEY, 'clean.manifest')
+    obj = conns3.Object(s3bucket, key)
+    obj.put(Body=open(tmp_manifest))
 
 ### LOAD, AGGREGATION, UNLOAD
 def create_table():
@@ -366,7 +360,8 @@ def create_indexes():
 
 if __name__ == '__main__':
     # AGGREGATION
-    get_manifest()
+    tmpdir = tempfile.mkdtemp()
+    upload_manifest(tmpdir)
     create_table()
     load_data()
     count_data()
@@ -386,7 +381,6 @@ if __name__ == '__main__':
         delete_key('%s000'%(table_keys[table]))
     print("Unloading datata to S3")
     # LOAD TO RDS
-    tmpdir = tempfile.mkdtemp()
     print("Loading to RDS")
     download(tmpdir)
     create_tables()
