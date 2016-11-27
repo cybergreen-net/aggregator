@@ -61,31 +61,35 @@ connRDS = psycopg2.connect(
     port=env['RDS_PORT']
     )
 
+def create_manifest(datapackage,s3_bucket,s3_key):
+    datapackage = json.loads(datapackage)
+    manifest = {"entries": []}
+    keys = (p['path'] for p in datapackage['resources'])
+    for key_list in keys:
+        for key in key_list:
+            manifest['entries'].append({"url": join("s3://",s3_bucket,s3_key,key), "mandatory": True})
+    return manifest
+
 def get_manifest():
-	
-	conn = boto.connect_s3(
-		aws_access_key_id = AWS_ACCESS_KEY,
-		aws_secret_access_key = AWS_ACCESS_SECRET_KEY
-		)
-	
-	s3bucket = SOURCE_S3_BUCKET
-	key = join(SOURCE_S3_KEY, 'datapackage.json')
-	bucket = conn.get_bucket(s3bucket)
-	key = bucket.get_key(key)
-	datapackage = key.get_contents_as_string()
-	datapackage = json.loads(datapackage)
-	manifest = {"entries": []}
-	keys = (p['path'] for p in datapackage['resources'])
-	for key_list in keys:
-		for key in key_list:
-			manifest['entries'].append({"url": join("s3://",SOURCE_S3_BUCKET,SOURCE_S3_KEY,key), "mandatory": True})
-	f = open('clean.manifest', 'w')
-	json.dump(manifest, f)
-	f.close()
-	
-	k = boto.s3.key.Key(bucket)
-	k.key = SOURCE_S3_KEY+'clean.manifest'
-	k.set_contents_from_filename('clean.manifest')
+    conn = boto.connect_s3(
+        aws_access_key_id = AWS_ACCESS_KEY,
+        aws_secret_access_key = AWS_ACCESS_SECRET_KEY
+        )
+    
+    s3bucket = SOURCE_S3_BUCKET
+    key = join(SOURCE_S3_KEY, 'datapackage.json')
+    bucket = conn.get_bucket(s3bucket)
+    key = bucket.get_key(key)
+    datapackage = key.get_contents_as_string()
+    manifest = create_manifest(datapackage,SOURCE_S3_BUCKET,SOURCE_S3_KEY)
+    f = open('clean.manifest', 'w')
+    json.dump(manifest, f)
+    f.close()
+    
+    k = boto.s3.key.Key(bucket)
+    k.key = SOURCE_S3_KEY+'clean.manifest'
+    k.set_contents_from_filename('clean.manifest')
+    os.remove('clean.manifest')
 
 ### LOAD, AGGREGATION, UNLOAD
 def create_table():
