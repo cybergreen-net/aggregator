@@ -1,16 +1,20 @@
 from __future__ import print_function
 
+from datapackage import push_datapackage
+from psycopg2.extensions import AsIs
+from sqlalchemy import create_engine
 from os.path import dirname, join
 from textwrap import dedent
+
+import datapackage
 import psycopg2
-from psycopg2.extensions import AsIs
-import csv
-import os
 import tempfile
 import shutil
-import json
 import urllib
 import boto3
+import json
+import csv
+import os
 
 def rpath(*args):
     return join(dirname(__file__), *args)
@@ -87,19 +91,19 @@ def create_redshift_tables():
     drop_tables(cursor, tablenames)
     create_logentry = dedent('''
     CREATE TABLE logentry(
-    date TIMESTAMP, ip VARCHAR(32), risk INT REFERENCES dim_risk(id),
+    date TIMESTAMP, ip VARCHAR(32), risk INT,
     asn BIGINT, country VARCHAR(2)
     )
     ''')
     create_risk = dedent('''
     CREATE TABLE dim_risk(
-    id INT PRIMARY KEY, slug VARCHAR(32), title VARCHAR(32),
+    id INT, slug VARCHAR(32), title VARCHAR(32),
     amplification_factor FLOAT, description TEXT
     )
     ''')
     create_count = dedent('''
     CREATE TABLE count(
-    date TIMESTAMP, risk INT REFERENCES dim_risk(id), country VARCHAR(2),
+    date TIMESTAMP, risk INT, country VARCHAR(2),
     asn BIGINT, count INT, count_amplified FLOAT
     )
     ''')
@@ -129,8 +133,9 @@ def load_data():
 
 
 def load_ref_data():
-    data = urllib.urlopen('https://raw.githubusercontent.com/cybergreen-net/refdata-risk/master/data/risk.csv')
-    risks = csv.DictReader(data)
+    url = 'https://raw.githubusercontent.com/cybergreen-net/refdata-risk/master/datapackage.json'
+    dp = datapackage.DataPackage(url)
+    risks = dp.resources[0].data
     cursor = connRedshift.cursor()
     query = dedent("""
     INSERT INTO dim_risk
@@ -165,13 +170,12 @@ def aggregate():
     connRedshift.commit()
 
 def update_amplified_count():
-    print('Calculating Aplificated Counts ...')
+    print('Calculating Amplificated Counts ...')
     cursor = connRedshift.cursor()
     query = dedent("""
     UPDATE count
-    SET count_amplified = count.count*amplification_factor
-    FROM (SELECT * FROM count JOIN dim_risk on risk=id) AS foo
-    WHERE count.risk=foo.id
+    SET count_amplified = count*amplification_factor
+    FROM dim_risk WHERE risk=id
     """)
     cursor.execute(query)
     connRedshift.commit()
@@ -182,7 +186,7 @@ def unload(table, s3path):
     cursor = connRedshift.cursor()
     role_arn = REDSHIFT_ROLE_ARN
     s3bucket = join("s3://", DEST_S3_BUCKET)
-    aws_auth_args = 'aws_access_key_id=%saws_secret_access_key=%s'%(AWS_ACCESS_KEY, AWS_ACCESS_SECRET_KEY)
+    aws_auth_args = 'aws_access_key_id=%s;aws_secret_access_key=%s'%(AWS_ACCESS_KEY, AWS_ACCESS_SECRET_KEY)
     s3path = join(s3bucket, s3path)
     cursor.execute(dedent("""
     UNLOAD('SELECT * FROM count')
@@ -192,8 +196,8 @@ def unload(table, s3path):
     ALLOWOVERWRITE
     PARALLEL OFF
     """)%(s3path, aws_auth_args))
-    add_extention('%s000'%(s3path))
-    delete_key('%s000'%(s3path))
+    add_extention('%s000'%(join(DEST_S3_KEY,table)))
+    delete_key('%s000'%(join(DEST_S3_KEY,table)))
     print('Data Unloaded To s3')
 
 
@@ -331,7 +335,6 @@ if __name__ == '__main__':
     # AGGREGATION
     tmpdir = tempfile.mkdtemp()
     upload_manifest(tmpdir)
-    shutil.rmtree(tmpdir)
     create_redshift_tables()
     load_data()
     load_ref_data()
@@ -340,10 +343,11 @@ if __name__ == '__main__':
     update_amplified_count()
     unload_key = join(DEST_S3_KEY,'count')
     unload('count', unload_key)
-    # print("Unloading datata to S3")
-    # # LOAD TO RDS
-    # print("Loading to RDS")
-    # download(tmpdir)
-    # create_tables()
-    # os.system(copy_commands.format(tmp=tmpdir, password=env['RDS_PASSWORD'], host=env['RDS_HOST'], db=STAGE))
-    # create_indexes()
+    print("Unloading datata to S3")
+    # LOAD TO RDS
+    print("Loading to RDS")
+    download(tmpdir)
+    create_tables()
+    os.system(copy_commands.format(tmp=tmpdir, password=env['RDS_PASSWORD'], host=env['RDS_HOST'], db=STAGE))
+    create_indexes()
+    shutil.rmtree(tmpdir)
