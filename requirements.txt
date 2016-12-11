@@ -1,2 +1,4 @@
+jsontableschema-sql
+datapackage
 psycopg2
 boto3
