@@ -46,13 +46,15 @@ conns3 = boto3.resource('s3',
 	aws_access_key_id=AWS_ACCESS_KEY,
 	aws_secret_access_key=AWS_ACCESS_SECRET_KEY)
 # RDS connection
-connRDS = psycopg2.connect(
-    database=STAGE,
-    user=env['RDS_USER'],
-    password=env['RDS_PASSWORD'],
-    host=env['RDS_HOST'],
-    port=env['RDS_PORT']
-    )
+connRDS = create_engine(
+    'postgres://cybergreen:{0}@cg-stats-dev.crovisjepxcd.eu-west-1.rds.amazonaws.com:5432/{1}'.
+        format(env['RDS_PASSWORD'], STAGE)
+    ).connect()
+urls = [
+    'https://raw.githubusercontent.com/cybergreen-net/refdata-risk/master/datapackage.json',
+    'https://raw.githubusercontent.com/cybergreen-net/refdata-country/master/datapackage.json',
+    'https://raw.githubusercontent.com/cybergreen-net/refdata-asn/master/datapackage.json'
+    ]
 
 def create_manifest(datapackage,s3_bucket,s3_key):
     datapackage = json.loads(datapackage)
@@ -217,118 +219,145 @@ def delete_key(key):
 ### LOAD FROM S3 TO RDS
 copy_commands = """
 export PGPASSWORD={password}
-
 psql -h \
 {host} \
 -U cybergreen -d {db} -p 5432 \
--c "\COPY risk FROM {tmp}/ref_risk.csv WITH delimiter as ',' null '' csv header;"
-
-psql -h \
-{host} \
--U cybergreen -d {db} -p 5432 \
--c "\COPY country FROM {tmp}/ref_country.csv WITH delimiter as ',' null '' csv header;"
-
-psql -h \
-{host} \
--U cybergreen -d {db} -p 5432 \
--c "\COPY country_asn FROM {tmp}/ref_country_asn.csv WITH delimiter as ',' null '' csv header;"
-
-psql -h \
-{host} \
--U cybergreen -d {db} -p 5432 \
--c "\COPY count_by_risk FROM {tmp}/risk.csv WITH delimiter as ',' null '' csv;"
-
-psql -h \
-{host} \
--U cybergreen -d {db} -p 5432 \
--c "\COPY count_by_country FROM {tmp}/country.csv WITH delimiter as ',' null '' csv;"
-
-psql -h \
-{host} \
--U cybergreen -d {db} -p 5432 \
--c "\COPY count FROM {tmp}/count.csv WITH delimiter as ',' null '' csv;"
+-c "\COPY fact_count FROM {tmp}/count.csv WITH delimiter as ',' null '' csv;"
 """
 
 
 def download(tmp):
     s3bucket = DEST_S3_BUCKET
     s3paths = [
-        (join(tmp,'count.csv'),join(DEST_S3_KEY,'count.csv')), 
-        (join(tmp,'country.csv'),join(DEST_S3_KEY,'country.csv')), 
-        (join(tmp,'risk.csv'),join(DEST_S3_KEY,'risk.csv')),
-        (join(tmp,'ref_risk.csv'),join(REFERENCE_KEY,'risk.csv')),
-        (join(tmp,'ref_country.csv'),join(REFERENCE_KEY,'country.csv')),
-        (join(tmp,'ref_country_asn.csv'),join(REFERENCE_KEY,'asn.csv'))
+        (join(tmp,'count.csv'),join(DEST_S3_KEY,'count.csv'))
     ]
     bucket = conns3.Bucket(s3bucket)
     for path in s3paths: 
         bucket.download_file(path[1], path[0])
-        
-def create_tables():	
-    cursor = connRDS.cursor();
+
+
+def load_rds_data(urls, engine):
+    for url in urls:
+        push_datapackage(descriptor=url,backend='sql',engine=connRDS)
+
+def create_rds_tables():
     tablenames = [
-        'count', 'count_by_country', 'count_by_risk',
-        'risk', 'country', 'country_asn'
+        'fact_count', 'agg_risk_country_week',
+        'agg_risk_country_month', 'agg_risk_country_quarter',
+        'agg_risk_country_year', 'dim_risk', 'dim_country', 
+        'dim_asn', 'dim_time'
     ]
-    for tablename in tablenames:
-        cursor.execute("select exists(SELECT * FROM information_schema.tables WHERE table_name='%s')"%tablename)	
-        if cursor.fetchone()[0]:
-            cursor.execute('DROP TABLE %s'%tablename)
-    create_count = """
-CREATE TABLE count
-(risk int, country varchar(2), asn bigint, date date, period_type varchar(8), count int);
-"""
-    create_count_by_country = """
-CREATE TABLE count_by_country
-(risk int, country varchar(2), date date, count bigint, score real, rank int);
-"""
-    create_count_by_risk = """
-CREATE TABLE count_by_risk
-(risk int,  date date, count bigint, max bigint);
-"""
-    create_risk = """
-CREATE TABLE risk
-(id varchar(16),  risk_id int, title varchar(32), category text, description text);
-"""
-    create_country= """
-CREATE TABLE country
-(id varchar(2),name varchar(32),slug varchar(32),region varchar(32),continent varchar(32));
-"""
-    create_country_asn = """
-CREATE TABLE country_asn
-(country varchar(2),  asn varchar(10), date date);
-"""
-    cursor.execute(create_risk)
-    cursor.execute(create_country)
-    cursor.execute(create_country_asn)
-    cursor.execute(create_count)
-    cursor.execute(create_count_by_country)
-    cursor.execute(create_count_by_risk)
-    connRDS.commit();
+    drop_tables(connRDS, tablenames)
+
+    create_risk ='ALTER TABLE data__risk___risk RENAME TO dim_risk'
+    create_country = 'ALTER TABLE data__country___country RENAME TO dim_country'
+    create_asn = 'ALTER TABLE data__asn___asn RENAME TO dim_asn'
+    create_time = dedent('''
+    CREATE TABLE dim_time(
+        date DATE, month INT,
+        year INT, quarter INT,
+        week INT, week_start DATE,
+        week_end DATE
+        )''')
+    create_count = dedent('''
+    CREATE TABLE fact_count(
+        date DATE, risk INT,
+        country VARCHAR(2),
+        asn BIGINT, count BIGINT,
+        count_amplified FLOAT
+        )''')
+    update_time = dedent('''
+    INSERT INTO dim_time
+    (SELECT
+        date,
+        EXTRACT(MONTH FROM date) as month,
+        EXTRACT(YEAR FROM date) as year,
+        EXTRACT(QUARTER FROM date) as quarter,
+        EXTRACT(WEEK FROM date) as week,
+        date_trunc('week', date) as week_start,
+        (date_trunc('week', date)+'6 days') as week_end
+    FROM fact_count GROUP BY date)
+    ''')
+    create_cube = dedent('''
+    CREATE TABLE agg_risk_country_{time}(
+        date DATE, risk INT,
+        country VARCHAR(2),
+        count BIGINT,
+        count_amplified FLOAT
+        )''')
+    populate_cube = dedent('''
+    INSERT INTO agg_risk_country_{time}
+        (SELECT date_trunc('{time}', date) AS date, risk, country, 
+        SUM(count) AS count, SUM(count_amplified) FROM fact_count
+    GROUP BY CUBE(date, country, risk) ORDER BY date DESC, country)
+    ''')
+
+    connRDS.execute(create_risk)
+    connRDS.execute(create_country)
+    connRDS.execute(create_asn)
+    connRDS.execute(create_time)
+    connRDS.execute(create_count)
+    connRDS.execute(update_time)
+    create_or_update_cubes(create_cube)
+    create_or_update_cubes(populate_cube)
+
+
+def create_constraints():
+    risk_constraints = 'ALTER TABLE dim_risk ADD PRIMARY KEY (id);'
+    country_constraints = 'ALTER TABLE dim_country ADD PRIMARY KEY (id);'
+    asn_constraints = 'ALTER TABLE dim_asn ADD PRIMARY KEY (number)'
+    time_constraints = 'ALTER TABLE dim_time ADD PRIMARY KEY (date)'
+    count_counstraints = dedent('''
+    ALTER TABLE fact_count
+    ADD CONSTRAINT fk_count_risk FOREIGN KEY (risk) REFERENCES dim_risk(id),
+    ADD CONSTRAINT fk_count_country FOREIGN KEY (country) REFERENCES dim_country(id),
+    ADD CONSTRAINT fk_count_asn FOREIGN KEY (asn) REFERENCES dim_asn(number),
+    ADD CONSTRAINT fk_count_time FOREIGN KEY (date) REFERENCES dim_time(date);
+    ''')
+    cube_counstraints = dedent('''
+    ALTER TABLE agg_risk_country_{time}
+    ADD CONSTRAINT fk_cube_risk FOREIGN KEY (risk) REFERENCES dim_risk(id),
+    ADD CONSTRAINT fk_cube_country FOREIGN KEY (country) REFERENCES dim_country(id),
+    ADD CONSTRAINT fk_cube_time FOREIGN KEY (date) REFERENCES dim_time(date);
+    ''')
+    connRDS.execute(risk_constraints)
+    connRDS.execute(country_constraints)
+    connRDS.execute(asn_constraints)
+    connRDS.execute(time_constraints)
+    connRDS.execute(count_counstraints)
+    create_or_update_cubes(cube_counstraints)
+
 
 def create_indexes():
-	cursor = connRDS.cursor()
-	idx_dict = {
-		# Index to speedup /api/v1/count
-		"idx_total_count": "CREATE INDEX idx_total_count ON count (date, country, risk, asn, period_type);",
-		"idx_all_desc": "CREATE INDEX idx_all_date_desc on count (date DESC, country, risk, asn, period_type);",
-		# Index to speedup /api/v1/count when asn is given
-		"idx_asn": "CREATE INDEX idx_asn ON count (asn);",
-		"idx_country": "CREATE INDEX idx_country ON count(country);",
-		"idx_date": "CREATE INDEX idx_date ON count(date);",
-		"idx_date_cbc": "CREATE INDEX idx_date_cbc ON count_by_country(date);",
-		"idx_risk_cbc": "CREATE INDEX idx_risk_cbc ON count_by_country(risk);",
-		"idx_country_cbc": "CREATE INDEX idx_country_cbc ON count_by_country(country);",
-		"idx_risk_cbr": "CREATE INDEX idx_risk_cbr ON count_by_risk(risk);",
-		"idx_date_cbc": "CREATE INDEX idx_date_cbr ON count_by_risk(date);",
-		}
-	for idx in idx_dict:
-		cursor.execute(idx_dict[idx])
-	connRDS.commit()
+    connRDS = connRDS.curesor()
+    idx_dict = {
+        # Index to speedup /api/v1/count
+        "idx_all": "CREATE INDEX idx_all ON fact_count(date, country, risk, asn);",
+        "idx_all_desc": "CREATE INDEX idx_all_desc ON fact_count(date DESC, country, risk, asn);",
+        "idx_risk": "CREATE INDEX idx_risk ON fact_count(risk);",
+        "idx_asn": "CREATE INDEX idx_asn ON fact_count(asn);",
+        "idx_country": "CREATE INDEX idx_country ON fact_count(country);",
+        "idx_date": "CREATE INDEX idx_date ON fact_count(date);",
+        "idx_all_cube": "CREATE INDEX idx_all_cube ON agg_risk_country_date(date, country, risk);",
+        "idx_all_desc_cube": "CREATE INDEX idx_all_desc_cube ON agg_risk_country_date(date DESC, country, risk);",
+        "idx_risk_cube": "CREATE INDEX idx_risk_cube ON agg_risk_country_date(risk);",
+        "idx_country_cube": "CREATE INDEX idx_country_cube ON agg_risk_country_date(country);",
+        "idx_date_cube": "CREATE INDEX idx_date_cube ON agg_risk_country_date(date);"
+    }
+    for idx in idx_dict:
+        cursor.execute(idx_dict[idx])
+
 
 def drop_tables(cursor, tables):
     for tablename in tables:
         cursor.execute("DROP TABLE IF EXISTS %(table)s CASCADE",{"table": AsIs(tablename)})
+
+def create_or_update_cubes(cmd):
+    time_granularities = [
+        'week', 'month', 'quarter', 'year'
+    ]
+    for time in time_granularities:    
+        connRDS.execute(cmd.format(time=time))
 
 
 if __name__ == '__main__':
@@ -341,13 +370,14 @@ if __name__ == '__main__':
     count_data()
     aggregate()
     update_amplified_count()
-    unload_key = join(DEST_S3_KEY,'count')
     unload('count', unload_key)
-    print("Unloading datata to S3")
+    unload_key = join(DEST_S3_KEY,'count')
     # LOAD TO RDS
     print("Loading to RDS")
     download(tmpdir)
-    create_tables()
+    load_rds_data(urls, connRDS)
+    create_rds_tables()
     os.system(copy_commands.format(tmp=tmpdir, password=env['RDS_PASSWORD'], host=env['RDS_HOST'], db=STAGE))
-    create_indexes()
+    # create_constraints()
+    # create_indexes()
     shutil.rmtree(tmpdir)
