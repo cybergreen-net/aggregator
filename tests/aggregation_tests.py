@@ -11,7 +11,7 @@ from textwrap import dedent
 
 from mock import patch
 from nose.plugins.attrib import attr
-import psycopg2
+from sqlalchemy import create_engine
 import datetime
 
 import main
@@ -19,13 +19,7 @@ import main
 env = json.load(open('.env.test.json'))
 
 
-connection = psycopg2.connect(
-    database=env['REDSHIFT_DBNAME'],
-    user=env['REDSHIFT_USER'],
-    password=env['REDSHIFT_PASSWORD'],
-    host=env['REDSHIFT_HOST'],
-    port=env['REDSHIFT_PORT']
-)
+connection = create_engine('postgres://cg_test_user:secret@localhost/cg_test_db')
 
 
 class AggregationTestCase(unittest.TestCase):
@@ -36,9 +30,9 @@ class AggregationTestCase(unittest.TestCase):
         patch('main.connRedshift', connection).start()
 
         # Set isolation level to run CREATE DATABASE statement outside of transactions.
-        main.connRedshift.set_isolation_level(psycopg2.extensions.ISOLATION_LEVEL_AUTOCOMMIT)
+        # main.connRedshift.set_isolation_level(psycopg2.extensions.ISOLATION_LEVEL_AUTOCOMMIT)
 
-        self.cursor = main.connRedshift.cursor()
+        self.cursor = main.connRedshift.raw_connection().cursor()
 
         # Recreate logentry table
         main.create_redshift_tables()
@@ -216,8 +210,8 @@ class CalculationTestCase(unittest.TestCase):
         # Patch main connection with the test one.
         patch('main.connRedshift', connection).start()
         # Set isolation level to run CREATE DATABASE statement outside of transactions.
-        main.connRedshift.set_isolation_level(psycopg2.extensions.ISOLATION_LEVEL_AUTOCOMMIT)
-        self.cursor = main.connRedshift.cursor()
+        # main.connRedshift.set_isolation_level(psycopg2.extensions.ISOLATION_LEVEL_AUTOCOMMIT)
+        self.cursor = main.connRedshift.raw_connection().cursor()
         main.create_redshift_tables()
         # import amlificatin counts
         scan_csv = dedent('''\

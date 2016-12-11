@@ -7,7 +7,6 @@ from os.path import dirname, join
 from textwrap import dedent
 
 import datapackage
-import psycopg2
 import tempfile
 import shutil
 import urllib
@@ -34,13 +33,10 @@ REDSHIFT_ROLE_ARN = env['REDSHIFT_ROLE_ARN']
 
 
 # Redshift connection
-connRedshift = psycopg2.connect(
-    database=STAGE,
-    user=env['REDSHIFT_USER'],
-    password=env['REDSHIFT_PASSWORD'],
-    host=env['REDSHIFT_HOST'],
-    port=env['REDSHIFT_PORT']
-)
+connRedshift = create_engine(
+    'postgres://cybergreen:{0}@cg-analytics.cqxchced59ta.eu-west-1.redshift.amazonaws.com:5439/{1}'.
+        format(env['REDSHIFT_PASSWORD'], STAGE)
+    ).connect()
 # S3 connection
 conns3 = boto3.resource('s3',
 	aws_access_key_id=AWS_ACCESS_KEY,
@@ -55,6 +51,7 @@ urls = [
     'https://raw.githubusercontent.com/cybergreen-net/refdata-country/master/datapackage.json',
     'https://raw.githubusercontent.com/cybergreen-net/refdata-asn/master/datapackage.json'
     ]
+
 
 def create_manifest(datapackage,s3_bucket,s3_key):
     datapackage = json.loads(datapackage)
@@ -83,14 +80,13 @@ def upload_manifest(tmp_dir):
     obj.put(Body=open(tmp_manifest))
     print('Manifest Updated')
 
-    
+
 ### LOAD, AGGREGATION, UNLOAD
 def create_redshift_tables():
     tablenames = [
         'dim_risk', 'logentry', 'count'
     ]
-    cursor = connRedshift.cursor()
-    drop_tables(cursor, tablenames)
+    drop_tables(connRedshift, tablenames)
     create_logentry = dedent('''
     CREATE TABLE logentry(
     date TIMESTAMP, ip VARCHAR(32), risk INT,
@@ -109,17 +105,15 @@ def create_redshift_tables():
     asn BIGINT, count INT, count_amplified FLOAT
     )
     ''')
-    cursor.execute(create_risk)
-    cursor.execute(create_logentry)
-    cursor.execute(create_count)
-    connRedshift.commit()
+    connRedshift.execute(create_risk)
+    connRedshift.execute(create_logentry)
+    connRedshift.execute(create_count)
     print('Redshift tables created')
 
 
 def load_data():
     role_arn = REDSHIFT_ROLE_ARN
     manifest = join('s3://', SOURCE_S3_BUCKET, SOURCE_S3_KEY,'clean.manifest')
-    cursor = connRedshift.cursor()
     copycmd = dedent('''
     COPY logentry FROM '%s'
     CREDENTIALS 'aws_iam_role=%s'
@@ -129,8 +123,7 @@ def load_data():
     MANIFEST
     ''')%(manifest, role_arn)
     print('Loading data into db ... ')
-    cursor.execute(copycmd)
-    connRedshift.commit()
+    connRedshift.execute(copycmd)
     print('Data Loaded')
 
 
@@ -138,28 +131,23 @@ def load_ref_data():
     url = 'https://raw.githubusercontent.com/cybergreen-net/refdata-risk/master/datapackage.json'
     dp = datapackage.DataPackage(url)
     risks = dp.resources[0].data
-    cursor = connRedshift.cursor()
     query = dedent("""
     INSERT INTO dim_risk
     VALUES (%(id)s, %(slug)s, %(title)s, %(amplification_factor)s, %(description)s)""")
     for risk in risks:
         # description is too long and not needed here
         risk["description"]=""
-        cursor.execute(query,risk)
-    connRedshift.commit()
-
+        connRedshift.execute(query,risk)
+    
 
 def count_data():
 	cmd = 'SELECT count(*) FROM logentry'
-	cursor = connRedshift.cursor()
-	cursor.execute(cmd)
+	connRedshift.execute(cmd)
 	print(cursor.fetchone()[0])
-	connRedshift.commit()
 
 
 def aggregate():
     print('Aggregating ...')
-    cursor = connRedshift.cursor()
     query = dedent("""
     INSERT INTO count
     (SELECT
@@ -168,29 +156,26 @@ def aggregate():
     SELECT DISTINCT (ip), date_trunc('day', date) AS date, risk, asn, country FROM logentry) AS foo
     GROUP BY date, asn, risk, country ORDER BY date DESC, country ASC, asn ASC, risk ASC)
     """)
-    cursor.execute(query)
-    connRedshift.commit()
+    connRedshift.execute(query)
+
 
 def update_amplified_count():
     print('Calculating Amplificated Counts ...')
-    cursor = connRedshift.cursor()
     query = dedent("""
     UPDATE count
     SET count_amplified = count*amplification_factor
     FROM dim_risk WHERE risk=id
     """)
-    cursor.execute(query)
-    connRedshift.commit()
+    connRedshift.execute(query)
     print('Aggregation Finished!')
 
 
 def unload(table, s3path):
-    cursor = connRedshift.cursor()
     role_arn = REDSHIFT_ROLE_ARN
     s3bucket = join("s3://", DEST_S3_BUCKET)
     aws_auth_args = 'aws_access_key_id=%s;aws_secret_access_key=%s'%(AWS_ACCESS_KEY, AWS_ACCESS_SECRET_KEY)
     s3path = join(s3bucket, s3path)
-    cursor.execute(dedent("""
+    connRedshift.execute(dedent("""
     UNLOAD('SELECT * FROM count')
     TO '%s'
     CREDENTIALS '%s'
