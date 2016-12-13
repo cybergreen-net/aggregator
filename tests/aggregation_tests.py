@@ -16,9 +16,6 @@ import datetime
 
 import main
 
-env = json.load(open('.env.test.json'))
-
-
 connection = create_engine('postgres://cg_test_user:secret@localhost/cg_test_db')
 
 
@@ -315,5 +312,5 @@ class MetadataTestCase(unittest.TestCase):
             {'url': u's3://test.bucket/test/key/dns-scan/dns-scan.20000101.csv.gz',
              'mandatory': True}
             ]}
-        manifest = main.create_manifest(datapackage, 'test.bucket','test/key')
+        manifest = main.create_manifest(datapackage, 's3://test.bucket/test/key')
         self.assertEquals(manifest,expected_manifest)

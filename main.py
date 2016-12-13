@@ -4,6 +4,7 @@ from datapackage import push_datapackage
 from psycopg2.extensions import AsIs
 from sqlalchemy import create_engine
 from os.path import dirname, join
+from string import Template
 from textwrap import dedent
 
 import datapackage
@@ -15,67 +16,82 @@ import json
 import csv
 import os
 
+
+#utils
 def rpath(*args):
     return join(dirname(__file__), *args)
 
-env = json.load(open(rpath('.env.json')))
+
+def load_config(config_path):
+    '''
+    Load the regular config file
+    '''
+    template = open(config_path).read()
+    try:
+        config_str = Template(template).substitute(os.environ)
+    except KeyError as e:
+        raise ValueError(
+            "A missing environment variable: {}".format(e))
+    config = json.loads(config_str)
+
+    return config
+
+
+def is_s3_path(str):
+    return str.startswith("s3://")
+
+
+def split_s3_path(s3_address):
+    if not is_s3_path(s3_address):
+        raise ValueError("{} is not an S3 address".format(s3_address))
+    else:
+        (s3_bucket, s3_path) = s3_address[5:].split('/', 1)
+    return (s3_bucket, s3_path)
+
+
+config = load_config(rpath('config.json'))
+
+CYBERGREEN_SOURCE_ROOT = config['source_path']
+CYBERGREEN_DEST_ROOT = config['dest_path']
+REDSHIFT_ROLE_ARN = config['role_arn']
+REDSHIFT_URI = config['redshift_uri']
+RDS_URI = config['rds_uri']
+REF_DATA_URLS = [inventory['url'] for inventory in config['inventory']]
 # AWS credentials
-AWS_ACCESS_KEY = env['AWS_ACCESS_KEY']
-AWS_ACCESS_SECRET_KEY = env['AWS_ACCESS_SECRET_KEY']
-
-STAGE= env['STAGE']
-SOURCE_S3_BUCKET = env['SOURCE_S3_BUCKET']
-SOURCE_S3_KEY = join(STAGE,env['SOURCE_S3_KEY'])
-DEST_S3_BUCKET = env['DEST_S3_BUCKET']
-DEST_S3_KEY= join(STAGE,env['DEST_S3_KEY'])
-REFERENCE_KEY = join(STAGE, env['REFERENCE_KEY'])
-REDSHIFT_ROLE_ARN = env['REDSHIFT_ROLE_ARN']
-
-
-# Redshift connection
-connRedshift = create_engine(
-    'postgres://cybergreen:{0}@cg-analytics.cqxchced59ta.eu-west-1.redshift.amazonaws.com:5439/{1}'.
-        format(env['REDSHIFT_PASSWORD'], STAGE)
-    ).connect()
-# S3 connection
+AWS_ACCESS_KEY = config['access_key']
+AWS_ACCESS_SECRET_KEY = config['secret_key']
+# set connections
+connRedshift = create_engine(REDSHIFT_URI).connect()
+connRDS = create_engine(RDS_URI).connect()
 conns3 = boto3.resource('s3',
-	aws_access_key_id=AWS_ACCESS_KEY,
-	aws_secret_access_key=AWS_ACCESS_SECRET_KEY)
-# RDS connection
-connRDS = create_engine(
-    'postgres://cybergreen:{0}@cg-stats-dev.crovisjepxcd.eu-west-1.rds.amazonaws.com:5432/{1}'.
-        format(env['RDS_PASSWORD'], STAGE)
-    ).connect()
-urls = [
-    'https://raw.githubusercontent.com/cybergreen-net/refdata-risk/master/datapackage.json',
-    'https://raw.githubusercontent.com/cybergreen-net/refdata-country/master/datapackage.json',
-    'https://raw.githubusercontent.com/cybergreen-net/refdata-asn/master/datapackage.json'
-    ]
+    aws_access_key_id=AWS_ACCESS_KEY,
+    aws_secret_access_key=AWS_ACCESS_SECRET_KEY
+)
 
 
-def create_manifest(datapackage,s3_bucket,s3_key):
+def create_manifest(datapackage,source):
     datapackage = json.loads(datapackage)
     manifest = {"entries": []}
     keys = (p['path'] for p in datapackage['resources'])
     for key_list in keys:
         for key in key_list:
-            manifest['entries'].append({"url": join("s3://",s3_bucket,s3_key,key), "mandatory": True})
+            manifest['entries'].append({"url": join(source,key), "mandatory": True})
     return manifest
 
 
 def upload_manifest(tmp_dir):
     tmp_manifest = join(tmp_dir,'clean.manifest')
-    s3bucket = SOURCE_S3_BUCKET
-    key = join(SOURCE_S3_KEY, 'datapackage.json')
-    obj = conns3.Object(s3bucket, key)
-    datapackage = obj.get()['Body'].read()
-    manifest = create_manifest(datapackage,SOURCE_S3_BUCKET,SOURCE_S3_KEY)
-    
+    s3bucket, key = split_s3_path(CYBERGREEN_SOURCE_ROOT)
+    dp_key = join(key, 'datapackage.json')
+    obj = conns3.Object(s3bucket, dp_key)
+    dp = obj.get()['Body'].read()
+    manifest = create_manifest(dp,CYBERGREEN_SOURCE_ROOT)
+
     f = open(tmp_manifest, 'w')
     json.dump(manifest, f)
     f.close()
-    
-    key = join(SOURCE_S3_KEY, 'clean.manifest')
+
+    key = join(key, 'clean.manifest')
     obj = conns3.Object(s3bucket, key)
     obj.put(Body=open(tmp_manifest))
     print('Manifest Updated')
@@ -112,8 +128,7 @@ def create_redshift_tables():
 
 
 def load_data():
-    role_arn = REDSHIFT_ROLE_ARN
-    manifest = join('s3://', SOURCE_S3_BUCKET, SOURCE_S3_KEY,'clean.manifest')
+    manifest = join(CYBERGREEN_SOURCE_ROOT, 'clean.manifest')
     copycmd = dedent('''
     COPY logentry FROM '%s'
     CREDENTIALS 'aws_iam_role=%s'
@@ -121,109 +136,99 @@ def load_data():
     DELIMITER ',' gzip
     TIMEFORMAT AS 'auto'
     MANIFEST
-    ''')%(manifest, role_arn)
+    ''')
     print('Loading data into db ... ')
-    connRedshift.execute(copycmd)
+    connRedshift.execute(copycmd%(manifest, REDSHIFT_ROLE_ARN))
     print('Data Loaded')
 
 
 def load_ref_data():
-    url = 'https://raw.githubusercontent.com/cybergreen-net/refdata-risk/master/datapackage.json'
+    url = ''
+    for inv in config['inventory']:
+        if inv['name'] == 'risk':
+            url = inv['url']
     dp = datapackage.DataPackage(url)
     risks = dp.resources[0].data
-    query = dedent("""
+    query = dedent('''
     INSERT INTO dim_risk
-    VALUES (%(id)s, %(slug)s, %(title)s, %(amplification_factor)s, %(description)s)""")
+    VALUES (%(id)s, %(slug)s, %(title)s, %(amplification_factor)s, %(description)s)''')
     for risk in risks:
         # description is too long and not needed here
-        risk["description"]=""
+        risk['description']=''
         connRedshift.execute(query,risk)
     
 
-def count_data():
-	cmd = 'SELECT count(*) FROM logentry'
-	connRedshift.execute(cmd)
-	print(cursor.fetchone()[0])
-
-
 def aggregate():
     print('Aggregating ...')
-    query = dedent("""
+    query = dedent('''
     INSERT INTO count
     (SELECT
         date, risk, country, asn, count(*) as count, 0 as count_amplified
     FROM(
     SELECT DISTINCT (ip), date_trunc('day', date) AS date, risk, asn, country FROM logentry) AS foo
     GROUP BY date, asn, risk, country ORDER BY date DESC, country ASC, asn ASC, risk ASC)
-    """)
+    ''')
     connRedshift.execute(query)
 
 
 def update_amplified_count():
     print('Calculating Amplificated Counts ...')
-    query = dedent("""
+    query = dedent('''
     UPDATE count
     SET count_amplified = count*amplification_factor
     FROM dim_risk WHERE risk=id
-    """)
+    ''')
     connRedshift.execute(query)
     print('Aggregation Finished!')
 
 
-def unload(table, s3path):
-    role_arn = REDSHIFT_ROLE_ARN
-    s3bucket = join("s3://", DEST_S3_BUCKET)
-    aws_auth_args = 'aws_access_key_id=%s;aws_secret_access_key=%s'%(AWS_ACCESS_KEY, AWS_ACCESS_SECRET_KEY)
-    s3path = join(s3bucket, s3path)
-    connRedshift.execute(dedent("""
+def unload(table):
+    aws_auth_args = 'aws_access_key_id=%s;aws_secret_access_key=%s'%\
+        (AWS_ACCESS_KEY, AWS_ACCESS_SECRET_KEY)
+    connRedshift.execute(dedent('''
     UNLOAD('SELECT * FROM count')
     TO '%s'
     CREDENTIALS '%s'
     DELIMITER AS ','
     ALLOWOVERWRITE
     PARALLEL OFF
-    """)%(s3path, aws_auth_args))
-    add_extention('%s000'%(join(DEST_S3_KEY,table)))
-    delete_key('%s000'%(join(DEST_S3_KEY,table)))
+    ''')%(join(CYBERGREEN_DEST_ROOT, table), aws_auth_args))
+
+    bucket, key = split_s3_path(CYBERGREEN_DEST_ROOT)
+    add_extention(bucket, '%s000'%(join(key, table)))
+    delete_key(bucket, '%s000'%(join(key, table)))
     print('Data Unloaded To s3')
 
 
-def add_extention(key):
+def add_extention(bucket, key):
     copy_source = {
-        'Bucket': DEST_S3_BUCKET,
+        'Bucket': bucket,
         'Key': key
     }
     new_key = '%s.csv'%(key.split('0')[0])
-    conns3.meta.client.copy(copy_source, DEST_S3_BUCKET, new_key)
+    conns3.meta.client.copy(copy_source, bucket, new_key)
 
 
-def delete_key(key):
-    conns3.Object(DEST_S3_BUCKET, key).delete()
+def delete_key(bucket, key):
+    conns3.Object(bucket, key).delete()
 
 
 ### LOAD FROM S3 TO RDS
-copy_commands = """
-export PGPASSWORD={password}
-psql -h \
-{host} \
--U cybergreen -d {db} -p 5432 \
--c "\COPY fact_count FROM {tmp}/count.csv WITH delimiter as ',' null '' csv;"
-"""
-
-
 def download(tmp):
-    s3bucket = DEST_S3_BUCKET
+    print('Downloading csv file ...')
+    bucket, key = split_s3_path(CYBERGREEN_DEST_ROOT)
     s3paths = [
-        (join(tmp,'count.csv'),join(DEST_S3_KEY,'count.csv'))
+        (join(tmp,'count.csv'),join(key,'count.csv'))
     ]
-    bucket = conns3.Bucket(s3bucket)
+    bucket = conns3.Bucket(bucket)
     for path in s3paths: 
         bucket.download_file(path[1], path[0])
 
 
-def load_rds_data(urls, engine):
+def load_ref_data_rds(urls, engine):
+    print('Loading reference_data')
     for url in urls:
-        push_datapackage(descriptor=url,backend='sql',engine=connRDS)
+        push_datapackage(descriptor=url,backend='sql',engine=engine)
 
 def create_rds_tables():
     tablenames = [
@@ -251,6 +256,23 @@ def create_rds_tables():
         asn BIGINT, count BIGINT,
         count_amplified FLOAT
         )''')
+    create_cube = dedent('''
+    CREATE TABLE agg_risk_country_{time}(
+        date DATE, risk INT,
+        country VARCHAR(2),
+        count BIGINT,
+        count_amplified FLOAT
+        )''')
+
+    connRDS.execute(create_risk)
+    connRDS.execute(create_country)
+    connRDS.execute(create_asn)
+    connRDS.execute(create_time)
+    connRDS.execute(create_count)
+    create_or_update_cubes(create_cube)
+
+
+def populate_tables(tmpdir):
     update_time = dedent('''
     INSERT INTO dim_time
     (SELECT
@@ -263,27 +285,18 @@ def create_rds_tables():
         (date_trunc('week', date)+'6 days') as week_end
     FROM fact_count GROUP BY date)
     ''')
-    create_cube = dedent('''
-    CREATE TABLE agg_risk_country_{time}(
-        date DATE, risk INT,
-        country VARCHAR(2),
-        count BIGINT,
-        count_amplified FLOAT
-        )''')
     populate_cube = dedent('''
     INSERT INTO agg_risk_country_{time}
         (SELECT date_trunc('{time}', date) AS date, risk, country, 
         SUM(count) AS count, SUM(count_amplified) FROM fact_count
     GROUP BY CUBE(date, country, risk) ORDER BY date DESC, country)
     ''')
-
-    connRDS.execute(create_risk)
-    connRDS.execute(create_country)
-    connRDS.execute(create_asn)
-    connRDS.execute(create_time)
-    connRDS.execute(create_count)
+    copy_command = dedent('''
+    psql {uri} -c "\COPY fact_count FROM {tmp}/count.csv WITH delimiter as ',' null '' csv;"
+    ''')
+    download(tmpdir)
+    os.system(copy_command.format(tmp=tmpdir,uri=config['rds_uri']))
     connRDS.execute(update_time)
-    create_or_update_cubes(create_cube)
     create_or_update_cubes(populate_cube)
 
 
@@ -337,32 +350,38 @@ def drop_tables(cursor, tables):
     for tablename in tables:
         cursor.execute("DROP TABLE IF EXISTS %(table)s CASCADE",{"table": AsIs(tablename)})
 
+
 def create_or_update_cubes(cmd):
     time_granularities = [
         'week', 'month', 'quarter', 'year'
     ]
-    for time in time_granularities:    
+    for time in time_granularities:
         connRDS.execute(cmd.format(time=time))
 
 
-if __name__ == '__main__':
-    # AGGREGATION
-    tmpdir = tempfile.mkdtemp()
+def run_redshift(tmpdir):
+    table_name = 'count'
     upload_manifest(tmpdir)
     create_redshift_tables()
     load_data()
     load_ref_data()
-    count_data()
     aggregate()
     update_amplified_count()
-    unload('count', unload_key)
-    unload_key = join(DEST_S3_KEY,'count')
-    # LOAD TO RDS
-    print("Loading to RDS")
-    download(tmpdir)
-    load_rds_data(urls, connRDS)
+    unload(table_name)
+    connRedshift.close()
+
+
+def run_rds(tmpdir):
+    load_ref_data_rds(REF_DATA_URLS, connRDS)
     create_rds_tables()
-    os.system(copy_commands.format(tmp=tmpdir, password=env['RDS_PASSWORD'], host=env['RDS_HOST'], db=STAGE))
+    populate_tables(tmpdir)
+    connRDS.close()
     # create_constraints()
     # create_indexes()
+
+
+if __name__ == '__main__':
+    tmpdir = tempfile.mkdtemp()
+    run_redshift(tmpdir)
+    run_rds(tmpdir)
     shutil.rmtree(tmpdir)
