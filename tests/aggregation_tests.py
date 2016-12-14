@@ -37,6 +37,9 @@ class AggregationTestCase(unittest.TestCase):
 
 
     def test_group_by_day(self):
+        '''
+        Cheks if entries with same dates are grouped and summed up
+        '''
         # GIVEN 3 entries of the same asn, risk and country,
         # two of which within same day, but different IP's
         scan_csv = dedent('''\
@@ -60,6 +63,9 @@ class AggregationTestCase(unittest.TestCase):
 
 
     def test_group_by_distinct_ip(self):
+        '''
+        Cheks if entries with same IP within same risk and date are ignored
+        '''
         # GIVEN 3 entries of the same asn, risk, country an IP,
         # two of which within same day
         scan_csv = dedent('''\
@@ -83,6 +89,9 @@ class AggregationTestCase(unittest.TestCase):
 
 
     def test_group_by_risk(self):
+        '''
+        Cheks if entries with same risks are grouped and summed up
+        '''
         # GIVEN 3 entries of the same asn, day and country from hostA (71.3.0.1) and hostB (190.81.134)
         # hostA: 1 entry with risk type matching with hostB
         # hostB: 2 entries of different risk type
@@ -107,6 +116,9 @@ class AggregationTestCase(unittest.TestCase):
 
 
     def test_group_by_country(self):
+        '''
+        Cheks if entries with same county are gurped and summed up
+        '''
         # GIVEN 3 entries of the same risk and day, two of which are from one country
         scan_csv = dedent('''\
         ts,ip,risk_id,asn,cc
@@ -129,7 +141,10 @@ class AggregationTestCase(unittest.TestCase):
 
 
     def test_group_by_asn(self):
-        # GIVEN 3 entries of the same risk, country and day, but with different asn
+        '''
+        Cheks if entries with same asn are gurped and summed up
+        '''
+        # GIVEN 3 entries of the same risk, country and day, two of which have the same asn
         scan_csv = dedent('''\
         ts,ip,risk_id,asn,cc
         2016-09-29T00:00:01+00:00,190.81.134.82,2,12252,US
@@ -151,7 +166,12 @@ class AggregationTestCase(unittest.TestCase):
 
 
     def test_end_to_end(self):
-        # GIVEN 17 entries of the 2 different risk, day, country and asn
+        '''
+        Ckeks if entries same date, risk, country, asn are grouped seperately
+        and summed up correctly
+        '''
+        # GIVEN 17 entries of the 2 different risk, day, country and asn.
+        # Also includes one entry with duplicated IP within one day, risk, country and asn
         scan_csv = dedent('''\
         ts,ip,risk_id,asn,cc
         2016-09-29T00:00:01+00:00,190.81.134.82,2,12252,US
