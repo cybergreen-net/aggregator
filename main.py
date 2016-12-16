@@ -61,8 +61,9 @@ REF_DATA_URLS = [inventory['url'] for inventory in config['inventory']]
 AWS_ACCESS_KEY = config['access_key']
 AWS_ACCESS_SECRET_KEY = config['secret_key']
 # set connections
-connRedshift = create_engine(REDSHIFT_URI).connect()
-connRDS = create_engine(RDS_URI).connect()
+connRedshift = create_engine(REDSHIFT_URI,
+                             isolation_level='AUTOCOMMIT')
+connRDS = create_engine(RDS_URI)
 conns3 = boto3.resource('s3',
     aws_access_key_id=AWS_ACCESS_KEY,
     aws_secret_access_key=AWS_ACCESS_SECRET_KEY
@@ -99,10 +100,11 @@ def upload_manifest(tmp_dir):
 
 ### LOAD, AGGREGATION, UNLOAD
 def create_redshift_tables():
+    conn = connRedshift.connect()
     tablenames = [
         'dim_risk', 'logentry', 'count'
     ]
-    drop_tables(connRedshift, tablenames)
+    drop_tables(conn, tablenames)
     create_logentry = dedent('''
     CREATE TABLE logentry(
     date TIMESTAMP, ip VARCHAR(32), risk INT,
@@ -121,13 +123,15 @@ def create_redshift_tables():
     asn BIGINT, count INT, count_amplified FLOAT
     )
     ''')
-    connRedshift.execute(create_risk)
-    connRedshift.execute(create_logentry)
-    connRedshift.execute(create_count)
+    conn.execute(create_risk)
+    conn.execute(create_logentry)
+    conn.execute(create_count)
+    conn.close()
     print('Redshift tables created')
 
 
 def load_data():
+    conn = connRedshift.connect()
     manifest = join(CYBERGREEN_SOURCE_ROOT, 'clean.manifest')
     copycmd = dedent('''
     COPY logentry FROM '%s'
@@ -138,11 +142,13 @@ def load_data():
     MANIFEST
     ''')
     print('Loading data into db ... ')
-    connRedshift.execute(copycmd%(manifest, REDSHIFT_ROLE_ARN))
+    conn.execute(copycmd%(manifest, REDSHIFT_ROLE_ARN))
+    conn.close()
     print('Data Loaded')
 
 
 def load_ref_data():
+    conn = connRedshift.connect()
     url = ''
     for inv in config['inventory']:
         if inv['name'] == 'risk':
@@ -155,10 +161,12 @@ def load_ref_data():
     for risk in risks:
         # description is too long and not needed here
         risk['description']=''
-        connRedshift.execute(query,risk)
-    
+        conn.execute(query,risk)
+    conn.close()
+
 
 def aggregate():
+    conn = connRedshift.connect()
     print('Aggregating ...')
     query = dedent('''
     INSERT INTO count
@@ -168,24 +176,28 @@ def aggregate():
     SELECT DISTINCT (ip), date_trunc('day', date) AS date, risk, asn, country FROM logentry) AS foo
     GROUP BY date, asn, risk, country ORDER BY date DESC, country ASC, asn ASC, risk ASC)
     ''')
-    connRedshift.execute(query)
+    conn.execute(query)
+    conn.close()
 
 
 def update_amplified_count():
+    conn = connRedshift.connect()
     print('Calculating Amplificated Counts ...')
     query = dedent('''
     UPDATE count
     SET count_amplified = count*amplification_factor
     FROM dim_risk WHERE risk=id
     ''')
-    connRedshift.execute(query)
+    conn.execute(query)
+    conn.close()
     print('Aggregation Finished!')
 
 
 def unload(table):
+    conn = connRedshift.connect()
     aws_auth_args = 'aws_access_key_id=%s;aws_secret_access_key=%s'%\
         (AWS_ACCESS_KEY, AWS_ACCESS_SECRET_KEY)
-    connRedshift.execute(dedent('''
+    conn.execute(dedent('''
     UNLOAD('SELECT * FROM count')
     TO '%s'
     CREDENTIALS '%s'
@@ -193,6 +205,7 @@ def unload(table):
     ALLOWOVERWRITE
     PARALLEL OFF
     ''')%(join(CYBERGREEN_DEST_ROOT, table), aws_auth_args))
+    conn.close()
 
     bucket, key = split_s3_path(CYBERGREEN_DEST_ROOT)
     add_extention(bucket, '%s000'%(join(key, table)))
@@ -226,18 +239,20 @@ def download(tmp):
 
 
 def load_ref_data_rds(urls, engine):
-    print('Loading reference_data')
+    print('Loading reference_data to RDS ...')
     for url in urls:
-        push_datapackage(descriptor=url,backend='sql',engine=engine)
+        push_datapackage(descriptor=url,backend='sql',engine=engine.connect())
+
 
 def create_rds_tables():
+    conn=connRDS.connect()
     tablenames = [
         'fact_count', 'agg_risk_country_week',
         'agg_risk_country_month', 'agg_risk_country_quarter',
         'agg_risk_country_year', 'dim_risk', 'dim_country', 
         'dim_asn', 'dim_time'
     ]
-    drop_tables(connRDS, tablenames)
+    drop_tables(conn, tablenames)
 
     create_risk ='ALTER TABLE data__risk___risk RENAME TO dim_risk'
     create_country = 'ALTER TABLE data__country___country RENAME TO dim_country'
@@ -264,15 +279,17 @@ def create_rds_tables():
         count_amplified FLOAT
         )''')
 
-    connRDS.execute(create_risk)
-    connRDS.execute(create_country)
-    connRDS.execute(create_asn)
-    connRDS.execute(create_time)
-    connRDS.execute(create_count)
-    create_or_update_cubes(create_cube)
+    conn.execute(create_risk)
+    conn.execute(create_country)
+    # conn.execute(create_asn)
+    conn.execute(create_time)
+    conn.execute(create_count)
+    create_or_update_cubes(conn, create_cube)
+    conn.close()
 
 
 def populate_tables(tmpdir):
+    conn=connRDS.connect()
     update_time = dedent('''
     INSERT INTO dim_time
     (SELECT
@@ -296,14 +313,20 @@ def populate_tables(tmpdir):
     ''')
     download(tmpdir)
     os.system(copy_command.format(tmp=tmpdir,uri=config['rds_uri']))
-    connRDS.execute(update_time)
-    create_or_update_cubes(populate_cube)
+    conn.execute(update_time)
+    create_or_update_cubes(conn, populate_cube)
+    conn.close()
 
 
 def create_constraints():
+    conn = connRDS.connect()
     risk_constraints = 'ALTER TABLE dim_risk ADD PRIMARY KEY (id);'
     country_constraints = 'ALTER TABLE dim_country ADD PRIMARY KEY (id);'
-    asn_constraints = 'ALTER TABLE dim_asn ADD PRIMARY KEY (number)'
+    asn_constraints = '''
+    ALTER TABLE dim_asn
+    ADD PRIMARY KEY (number),
+    ADD CONSTRAINT fk_country_asn FOREIGN KEY (country) REFERENCES dim_country(id)
+    '''
     time_constraints = 'ALTER TABLE dim_time ADD PRIMARY KEY (date)'
     count_counstraints = dedent('''
     ALTER TABLE fact_count
@@ -315,19 +338,19 @@ def create_constraints():
     cube_counstraints = dedent('''
     ALTER TABLE agg_risk_country_{time}
     ADD CONSTRAINT fk_cube_risk FOREIGN KEY (risk) REFERENCES dim_risk(id),
-    ADD CONSTRAINT fk_cube_country FOREIGN KEY (country) REFERENCES dim_country(id),
-    ADD CONSTRAINT fk_cube_time FOREIGN KEY (date) REFERENCES dim_time(date);
+    ADD CONSTRAINT fk_cube_country FOREIGN KEY (country) REFERENCES dim_country(id)
     ''')
-    connRDS.execute(risk_constraints)
-    connRDS.execute(country_constraints)
-    connRDS.execute(asn_constraints)
-    connRDS.execute(time_constraints)
-    connRDS.execute(count_counstraints)
-    create_or_update_cubes(cube_counstraints)
+    conn.execute(risk_constraints)
+    conn.execute(country_constraints)
+    conn.execute(asn_constraints)
+    conn.execute(time_constraints)
+    conn.execute(count_counstraints)
+    create_or_update_cubes(conn, cube_counstraints)
+    conn.close()
 
 
 def create_indexes():
-    connRDS = connRDS.curesor()
+    conn = connRDS.connect()
     idx_dict = {
         # Index to speedup /api/v1/count
         "idx_all": "CREATE INDEX idx_all ON fact_count(date, country, risk, asn);",
@@ -336,14 +359,18 @@ def create_indexes():
         "idx_asn": "CREATE INDEX idx_asn ON fact_count(asn);",
         "idx_country": "CREATE INDEX idx_country ON fact_count(country);",
         "idx_date": "CREATE INDEX idx_date ON fact_count(date);",
-        "idx_all_cube": "CREATE INDEX idx_all_cube ON agg_risk_country_date(date, country, risk);",
-        "idx_all_desc_cube": "CREATE INDEX idx_all_desc_cube ON agg_risk_country_date(date DESC, country, risk);",
-        "idx_risk_cube": "CREATE INDEX idx_risk_cube ON agg_risk_country_date(risk);",
-        "idx_country_cube": "CREATE INDEX idx_country_cube ON agg_risk_country_date(country);",
-        "idx_date_cube": "CREATE INDEX idx_date_cube ON agg_risk_country_date(date);"
+        "idx_all_cube": "CREATE INDEX idx_all_cube_{time} ON agg_risk_country_{time}(date, country, risk);",
+        "idx_all_desc_cube": "CREATE INDEX idx_all_desc_cube_{time} ON agg_risk_country_{time}(date DESC, country, risk);",
+        "idx_risk_cube": "CREATE INDEX idx_risk_cube_{time} ON agg_risk_country_{time}(risk);",
+        "idx_country_cube": "CREATE INDEX idx_country_cube_{time} ON agg_risk_country_{time}(country);",
+        "idx_date_cube": "CREATE INDEX idx_date_cube_{time} ON agg_risk_country_{time}(date);"
     }
     for idx in idx_dict:
-        cursor.execute(idx_dict[idx])
+        if 'cube' not in idx:
+            conn.execute(idx_dict[idx])
+        else:
+            create_or_update_cubes(conn, idx_dict[idx])
+    conn.close()
 
 
 def drop_tables(cursor, tables):
@@ -351,33 +378,31 @@ def drop_tables(cursor, tables):
         cursor.execute("DROP TABLE IF EXISTS %(table)s CASCADE",{"table": AsIs(tablename)})
 
 
-def create_or_update_cubes(cmd):
+def create_or_update_cubes(conn, cmd):
     time_granularities = [
         'week', 'month', 'quarter', 'year'
     ]
     for time in time_granularities:
-        connRDS.execute(cmd.format(time=time))
+        conn.execute(cmd.format(time=time))
 
 
 def run_redshift(tmpdir):
     table_name = 'count'
     upload_manifest(tmpdir)
     create_redshift_tables()
-    load_data()
     load_ref_data()
+    load_data()
     aggregate()
     update_amplified_count()
     unload(table_name)
-    connRedshift.close()
 
 
 def run_rds(tmpdir):
     load_ref_data_rds(REF_DATA_URLS, connRDS)
     create_rds_tables()
     populate_tables(tmpdir)
-    connRDS.close()
-    # create_constraints()
-    # create_indexes()
+    create_constraints()
+    create_indexes()
 
 
 if __name__ == '__main__':
