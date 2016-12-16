@@ -14,6 +14,16 @@ from nose.plugins.attrib import attr
 from sqlalchemy import create_engine
 import datetime
 
+# seting env variables for testing
+os.environ["CYBERGREEN_BUILD_ENV"] = ''
+os.environ["RDS_PASSWORD"] = ''
+os.environ["REDSHIFT_PASSWORD"] = ''
+os.environ["CYBERGREEN_SOURCE_ROOT"] = ''
+os.environ["CYBERGREEN_DEST_ROOT"] = ''
+os.environ["CYBERGREEN_BUILD_ENV"] = ''
+os.environ["AWS_ACCESS_KEY_ID"] = ''
+os.environ["AWS_SECRET_ACCESS_KEY"] = ''
+
 import main
 
 connection = create_engine('postgres://cg_test_user:secret@localhost/cg_test_db')
