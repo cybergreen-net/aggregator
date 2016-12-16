@@ -24,29 +24,17 @@ Install tooling:
 
 * python
 
-## Set up .env.json as in example:
+## Export following env variables as in example:
 
 ```
-{
-"STAGE": "dev",
-"REDSHIFT_PASSWORD":<<passwordForRedshift>>,
-"REDSHIFT_USER":"cybergreen",
-"REDSHIFT_HOST":"cg-analytics.cqxchced59ta.eu-west-1.redshift.amazonaws.com",
-"REDSHIFT_PORT":5439,
-"REDSHIFT_ROLE_ARN":"arn:aws:iam::635396214416:role/RedshiftCopyUnload",
-"RDS_PASSWORD": <<passwordForRDS>>,
-"RDS_USER":"cybergreen",
-"RDS_HOST":"cg-stats-dev.crovisjepxcd.eu-west-1.rds.amazonaws.com",
-"RDS_PORT":5432,
-"SOURCE_S3_BUCKET": "private-bits-cybergreen-net",
-"SOURCE_S3_KEY": "clean/",
-"DEST_S3_BUCKET": "bits.cybergreen.net",
-"DEST_S3_KEY": "latest/",
-"AWS_ACCESS_KEY": <<AwsAccessKeYGoesHERE>>,
-"AWS_ACCESS_SECRET_KEY": <<AwsAccessSEcretKeYGoesHerE>>
-}
+CYBERGREEN_BUILD_ENV=dev 
+RDS_PASSWORD=secret
+REDSHIFT_PASSWORD=secret
+CYBERGREEN_SOURCE_ROOT=s3://private-bits-cybergreen-net/myenv/myfeed
+CYBERGREEN_DEST_ROOT=s3://bits.cybergreen.net/myenv/myfeed/myversion
+AWS_ACCESS_KEY_ID=awSAccesKey
+AWS_SECRET_ACCESS_KEY=AwsSecretKey
 ```
-# Change STAGE variable to `"prod"` in .env.json to switch on production stage
 
 ## To aggregate data and Load to RDS db
 ```
