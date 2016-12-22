@@ -1,0 +1,42 @@
+{
+  "name": "refdata-risk",
+  "title": "Reference data for risks",
+  "version": "0.1.0",
+  "resources": [
+    {
+      "name": "risk",
+      "path": "data/risk.csv",
+      "format": "csv",
+      "mediatype": "text/csv",
+      "schema": {
+        "fields": [
+          {
+            "name": "id",
+            "type": "number",
+            "description": "Numeric identifier for risk"
+          },
+          {
+            "name": "slug",
+            "type": "string",
+            "description": "URL friendly expression for risk"
+          },
+          {
+            "name": "title",
+            "type": "string",
+            "description": "Actual name for given risk"
+          },
+          {
+            "name": "amplification_factor",
+            "type": "number",
+            "description": "Amplification factor for given risk"
+          },
+          {
+            "name": "description",
+            "type": "string",
+            "description": "Short description for given risk"
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -147,7 +147,7 @@ def load_data():
     print('Data Loaded')
 
 
-def load_ref_data():
+def load_ref_data(config=config):
     conn = connRedshift.connect()
     url = ''
     for inv in config['inventory']:
@@ -163,6 +163,13 @@ def load_ref_data():
         risk['description']=''
         conn.execute(query,risk)
     conn.close()
+
+
+def count_data():
+    cmd = 'SELECT count(*) FROM logentry'
+    cursor = connRedshift.raw_connection().cursor()
+    cursor.execute(cmd)
+    print(cursor.fetchone())
 
 
 def aggregate():
@@ -227,7 +234,7 @@ def delete_key(bucket, key):
 
 
 ### LOAD FROM S3 TO RDS
-def download(tmp):
+def download_and_load(tmp):
     print('Downloading csv file ...')
     bucket, key = split_s3_path(CYBERGREEN_DEST_ROOT)
     s3paths = [
@@ -236,13 +243,20 @@ def download(tmp):
     bucket = conns3.Bucket(bucket)
     for path in s3paths: 
         bucket.download_file(path[1], path[0])
+    
+    print('Loading into RDS ...')
+    copy_command = dedent('''
+    psql {uri} -c "\COPY fact_count FROM {tmp}/count.csv WITH delimiter as ',' null '' csv;"
+    ''')
+    os.system(copy_command.format(tmp=tmp,uri=config['rds_uri']))
 
 
 def load_ref_data_rds(urls, engine):
     print('Loading reference_data to RDS ...')
+    conn=engine.connect()
     for url in urls:
-        push_datapackage(descriptor=url,backend='sql',engine=engine.connect())
-
+        push_datapackage(descriptor=url,backend='sql',engine=conn)
+    conn.close()
 
 def create_rds_tables():
     conn=connRDS.connect()
@@ -281,14 +295,15 @@ def create_rds_tables():
 
     conn.execute(create_risk)
     conn.execute(create_country)
-    # conn.execute(create_asn)
+    conn.execute(create_asn)
     conn.execute(create_time)
     conn.execute(create_count)
     create_or_update_cubes(conn, create_cube)
     conn.close()
 
 
-def populate_tables(tmpdir):
+def populate_tables():
+    print('Populating cubes')
     conn=connRDS.connect()
     update_time = dedent('''
     INSERT INTO dim_time
@@ -308,11 +323,6 @@ def populate_tables(tmpdir):
         SUM(count) AS count, SUM(count_amplified) FROM fact_count
     GROUP BY CUBE(date, country, risk) ORDER BY date DESC, country)
     ''')
-    copy_command = dedent('''
-    psql {uri} -c "\COPY fact_count FROM {tmp}/count.csv WITH delimiter as ',' null '' csv;"
-    ''')
-    download(tmpdir)
-    os.system(copy_command.format(tmp=tmpdir,uri=config['rds_uri']))
     conn.execute(update_time)
     create_or_update_cubes(conn, populate_cube)
     conn.close()
@@ -337,8 +347,8 @@ def create_constraints():
     ''')
     cube_counstraints = dedent('''
     ALTER TABLE agg_risk_country_{time}
-    ADD CONSTRAINT fk_cube_risk FOREIGN KEY (risk) REFERENCES dim_risk(id),
-    ADD CONSTRAINT fk_cube_country FOREIGN KEY (country) REFERENCES dim_country(id)
+    ADD CONSTRAINT fk_cube_risk_{time} FOREIGN KEY (risk) REFERENCES dim_risk(id),
+    ADD CONSTRAINT fk_cube_country_{time} FOREIGN KEY (country) REFERENCES dim_country(id)
     ''')
     conn.execute(risk_constraints)
     conn.execute(country_constraints)
@@ -392,6 +402,7 @@ def run_redshift(tmpdir):
     create_redshift_tables()
     load_ref_data()
     load_data()
+    count_data()
     aggregate()
     update_amplified_count()
     unload(table_name)
@@ -400,7 +411,8 @@ def run_redshift(tmpdir):
 def run_rds(tmpdir):
     load_ref_data_rds(REF_DATA_URLS, connRDS)
     create_rds_tables()
-    populate_tables(tmpdir)
+    download_and_load(tmpdir)
+    populate_tables()
     create_constraints()
     create_indexes()
 
