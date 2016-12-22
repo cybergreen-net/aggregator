@@ -364,7 +364,7 @@ class RedshiftFunctionsTestCase(unittest.TestCase):
             ])
 
 
-    def teardown(self):
+    def tearDown(self):
         main.drop_tables(main.connRedshift, ['logentry', 'count', 'dim_risk'])
 
 
@@ -487,6 +487,8 @@ class RDSFunctionsTestCase(unittest.TestCase):
         
         ## TODO: check indexes created
 
+    def tearDown(self):
+        main.drop_tables(main.connRDS, self.tablenames)
 
 
 class MetadataTestCase(unittest.TestCase):
