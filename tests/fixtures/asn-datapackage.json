@@ -1,0 +1,32 @@
+{
+  "name": "refdata-asn",
+  "title": "Reference data for ASN",
+  "version": "0.1.0",
+  "resources": [
+    {
+      "name": "asn",
+      "path": "data/asn.csv",
+      "format": "csv",
+      "mediatype": "text/csv",
+      "schema": {
+        "fields": [
+          {
+            "name": "number",
+            "type": "number",
+            "description": "Autonomous System Number (ASN)"
+          },
+          {
+            "name": "title",
+            "type": "string",
+            "description": "AS Name"
+          },
+          {
+            "name": "country",
+            "type": "string",
+            "description": "ISO 3166-1 alpha-2 code representation of country"
+          }
+        ]
+      }
+    }
+  ]
+}

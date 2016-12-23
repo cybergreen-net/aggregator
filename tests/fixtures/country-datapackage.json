@@ -1,0 +1,42 @@
+{
+  "name": "refdata-country",
+  "title": "Reference data for countries",
+  "version": "0.1.0",
+  "resources": [
+    {
+      "name": "country",
+      "path": "data/country.csv",
+      "format": "csv",
+      "mediatype": "text/csv",
+      "schema": {
+        "fields": [
+          {
+            "name": "id",
+            "type": "string",
+            "description": "ISO 3166-1 alpha-2 code representatio for country"
+          },
+          {
+            "name": "name",
+            "type": "string",
+            "description": "Name for given country"
+          },
+          {
+            "name": "slug",
+            "type": "string",
+            "description": "URL friendly expression for country"
+          },
+          {
+            "name": "region",
+            "type": "string",
+            "description": "Geographical region for country"
+          },
+          {
+            "name": "continent",
+            "type": "string",
+            "description": "Continent country is located on"
+          }
+        ]
+      }
+    }
+  ]
+}
