@@ -1,3 +1,6 @@
+[![Build Status](https://travis-ci.org/cybergreen-net/aggregator.svg?branch=master)]
+(https://travis-ci.org/cybergreen-net/aggregator.svg?branch=master)
+
 Aggregator for CyberGreen risk data.
 
 ## Architecture

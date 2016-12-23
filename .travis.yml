@@ -1,0 +1,20 @@
+language: python
+
+python:
+  - "2.7"
+
+services:
+  - postgresql
+
+addons:
+  postgresql: "9.5"
+
+before_script:
+  - psql -U postgres -c "create user cg_test_user password 'secret' createdb;"
+  - psql -U postgres -c "create database cg_test_db owner=cg_test_user;"
+
+install:
+  - pip install -r requirements.txt
+  - pip install -r tests/requirements.txt
+
+script: nosetests -v
