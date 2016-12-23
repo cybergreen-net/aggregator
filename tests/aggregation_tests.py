@@ -441,11 +441,13 @@ class RDSFunctionsTestCase(unittest.TestCase):
         Cheks if all rds tables are created and temptables renamed
         '''
         main.create_rds_tables()
+        message='Table %(table) is not created'
         for table in self.tablenames:
             self.cursor.execute(
-                'select exists(select * from information_schema.tables where table_name=%(table)s)',
+                'select table_name from information_schema.tables where table_name=%(table)s',
                 {'table': table})
-            self.assertEqual(self.cursor.fetchone()[0], True)
+            # If there is no table cursor.fetchone() will return None and fail
+            self.assertEqual(self.cursor.fetchone()[0], table, msg=message.format(table=table))
 
 
     def test_populate_rds_tables(self):
@@ -458,7 +460,7 @@ class RDSFunctionsTestCase(unittest.TestCase):
         self.cursor.copy_expert("COPY fact_count from STDIN csv header", StringIO(self.counts))
         # After running populate tables
         main.populate_tables()
-        # Non of the tables should be empty (should not return None)
+        # If there is no entry cursor.fetchone() will return None and fail
         for table in self.tablenames:
             self.cursor.execute('SELECT * FROM %(table)s LIMIT 1',{"table": AsIs(table)})
             self.assertNotEqual(self.cursor.fetchone(), None, msg=message.format(table=table))
@@ -481,9 +483,10 @@ class RDSFunctionsTestCase(unittest.TestCase):
         main.populate_tables()
         main.create_constraints()
         for c_name in c_names:
-            self.cursor.execute("select * from information_schema.table_constraints WHERE constraint_name = %(c_name)s",
+            self.cursor.execute("select constraint_name from information_schema.table_constraints WHERE constraint_name = %(c_name)s",
                                 {'c_name': c_name})
-            self.assertTrue(self.cursor.fetchone(), msg=message.format(c_name=c_name))
+            # If there is no constraint cursor.fetchone() will return None and fail
+            self.assertEqual(self.cursor.fetchone()[0], c_name, msg=message.format(c_name=c_name))
         
         ## TODO: check indexes created
 
