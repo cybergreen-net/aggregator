@@ -321,7 +321,7 @@ def populate_tables():
     INSERT INTO agg_risk_country_{time}
         (SELECT date_trunc('{time}', date) AS date, risk, country, 
         SUM(count) AS count, SUM(count_amplified) FROM fact_count
-    GROUP BY CUBE(date, country, risk) ORDER BY date DESC, country)
+    GROUP BY CUBE(date_trunc('{time}', date), country, risk) ORDER BY date DESC, country)
     ''')
     conn.execute(update_time)
     create_or_update_cubes(conn, populate_cube)
