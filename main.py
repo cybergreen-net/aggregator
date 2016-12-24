@@ -363,6 +363,7 @@ def create_indexes():
     conn = connRDS.connect()
     idx_dict = {
         # Index to speedup /api/v1/count
+        'idx_date_country': 'CREATE INDEX idx_date_country ON fact_count(date DESC, country);',
         "idx_all": "CREATE INDEX idx_all ON fact_count(date, country, risk, asn);",
         "idx_all_desc": "CREATE INDEX idx_all_desc ON fact_count(date DESC, country, risk, asn);",
         "idx_risk": "CREATE INDEX idx_risk ON fact_count(risk);",
