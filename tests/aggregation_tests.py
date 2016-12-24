@@ -58,7 +58,7 @@ class RedshiftFunctionsTestCase(unittest.TestCase):
 
     def test_all_tables_created(self):
         '''
-        Cheks if all necessary tables are created for redshift
+        Checks if all necessary tables are created for redshift
         '''
         main.create_redshift_tables()
         self.cursor.execute(
@@ -77,7 +77,7 @@ class RedshiftFunctionsTestCase(unittest.TestCase):
 
     def test_drop_tables(self):
         '''
-        Cheks if tebles ar dropped
+        Checks if tebles ar dropped
         '''
         main.drop_tables(main.connRedshift, ['logentry', 'count', 'dim_risk'])
         self.cursor.execute(
@@ -96,7 +96,7 @@ class RedshiftFunctionsTestCase(unittest.TestCase):
 
     def test_referenece_data_loaded(self):
         '''
-        Cheks if reference data is loaded from given url
+        Checks if reference data is loaded from given url
         '''
         # load data
         main.load_ref_data(self.config)
@@ -106,7 +106,7 @@ class RedshiftFunctionsTestCase(unittest.TestCase):
 
     def test_group_by_day(self):
         '''
-        Cheks if entries with same dates are grouped and summed up
+        Checks if entries with same dates are grouped and summed up
         '''
         # GIVEN 3 entries of the same asn, risk and country,
         # two of which within same day, but different IP's
@@ -132,7 +132,7 @@ class RedshiftFunctionsTestCase(unittest.TestCase):
 
     def test_group_by_distinct_ip(self):
         '''
-        Cheks if entries with same IP within same risk and date are ignored
+        Checks if entries with same IP within same risk and date are ignored
         '''
         # GIVEN 3 entries of the same asn, risk, country an IP,
         # two of which within same day
@@ -158,7 +158,7 @@ class RedshiftFunctionsTestCase(unittest.TestCase):
 
     def test_group_by_risk(self):
         '''
-        Cheks if entries with same risks are grouped and summed up
+        Checks if entries with same risks are grouped and summed up
         '''
         # GIVEN 3 entries of the same asn, day and country from hostA (71.3.0.1) and hostB (190.81.134)
         # hostA: 1 entry with risk type matching with hostB
@@ -185,7 +185,7 @@ class RedshiftFunctionsTestCase(unittest.TestCase):
 
     def test_group_by_country(self):
         '''
-        Cheks if entries with same county are gurped and summed up
+        Checks if entries with same county are gurped and summed up
         '''
         # GIVEN 3 entries of the same risk and day, two of which are from one country
         scan_csv = dedent('''\
@@ -210,7 +210,7 @@ class RedshiftFunctionsTestCase(unittest.TestCase):
 
     def test_group_by_asn(self):
         '''
-        Cheks if entries with same asn are gurped and summed up
+        Checks if entries with same asn are gurped and summed up
         '''
         # GIVEN 3 entries of the same risk, country and day, two of which have the same asn
         scan_csv = dedent('''\
@@ -290,7 +290,7 @@ class RedshiftFunctionsTestCase(unittest.TestCase):
 
     def test_aplified_count(self):
         '''
-        Cheks if amplified counts are calculated correctly for each risk
+        Checks if amplified counts are calculated correctly for each risk
         '''
         # recreate tables
         main.create_redshift_tables()
@@ -323,7 +323,7 @@ class RedshiftFunctionsTestCase(unittest.TestCase):
 
     def test_aplified_count_when_grouped(self):
         '''
-        Cheks if amplified counts are calculated correctly for each risk when grouped
+        Checks if amplified counts are calculated correctly for each risk when grouped
         '''
         # recreate tables
         main.create_redshift_tables()
@@ -438,7 +438,7 @@ class RDSFunctionsTestCase(unittest.TestCase):
 
     def test_rds_tables_created(self):
         '''
-        Cheks if all rds tables are created and temptables renamed
+        Checks if all rds tables are created and temptables renamed
         '''
         main.create_rds_tables()
         message='Table %(table) is not created'
@@ -452,7 +452,7 @@ class RDSFunctionsTestCase(unittest.TestCase):
 
     def test_populate_rds_tables(self):
         '''
-        Cheks if rds tables are populated
+        Checks if rds tables are populated
         '''
         message = 'Table {table} is empty'
         # Create tables and pouplate fact_cunt
@@ -468,7 +468,7 @@ class RDSFunctionsTestCase(unittest.TestCase):
 
     def test_create_constraints(self):
         '''
-        Cheks if all constraints are created
+        Checks if all constraints are created
         '''
         c_names = [
             'dim_risk_pkey', 'dim_country_pkey', 'dim_asn_pkey', 'dim_time_pkey',
@@ -498,7 +498,7 @@ class MetadataTestCase(unittest.TestCase):
 
     def test_create_manifest(self):
         '''
-        Cheks if manifest is created according to AWS specifications
+        Checks if manifest is created according to AWS specifications
         '''
         datapackage = dedent('''{"resources":[
         {"path": ["ntp-scan/ntp-scan.20000101.csv.gz"],
