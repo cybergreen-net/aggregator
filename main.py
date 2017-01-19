@@ -323,8 +323,20 @@ def populate_tables():
         SUM(count) AS count, SUM(count_amplified) FROM fact_count
     GROUP BY CUBE(date_trunc('{time}', date), country, risk) ORDER BY date DESC, country)
     ''')
+    update_cube_risk = dedent('''
+    UPDATE agg_risk_country_{time}
+    SET risk=100
+    WHERE risk IS null;
+    ''')
+    update_cube_country = dedent('''
+    UPDATE agg_risk_country_{time}
+    SET country='T'
+    WHERE country IS null;
+    ''')
     conn.execute(update_time)
     create_or_update_cubes(conn, populate_cube)
+    create_or_update_cubes(conn, update_cube_risk)
+    create_or_update_cubes(conn, update_cube_country)
     conn.close()
 
 
