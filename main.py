@@ -251,23 +251,38 @@ def download_and_load(tmp):
     os.system(copy_command.format(tmp=tmp,uri=config['rds_uri']))
 
 
-def load_ref_data_rds(urls, engine):
+def load_ref_data_rds(urls, engine, tmp, uri):
     print('Loading reference_data to RDS ...')
     conn=engine.connect()
+    # creating dim_asn table here with other ref data
+    conn.execute('DROP TABLE IF EXISTS data__asn___asn CASCADE')
+    create_asn = 'CREATE TABLE data__asn___asn(number BIGINT, title TEXT, country TEXT)'
+    conn.execute(create_asn)
+    
     for url in urls:
-        push_datapackage(descriptor=url,backend='sql',engine=conn)
+        # Loading of asn with push_datapackage takes more then 2 hours
+        # So have to download localy and sasve (takes ~5 seconds)
+        if 'asn' not in url:
+            push_datapackage(descriptor=url,backend='sql',engine=conn)
+        else:
+            dp = datapackage.DataPackage(url)
+            # local path will be returned if not found remote one (fot tests)
+            url = dp.resources[0].remote_data_path or dp.resources[0].local_data_path
+            urllib.urlretrieve(url, join(tmp, 'dim_asn.csv'))
+            copy_command = dedent('''
+            psql {uri} -c "\COPY data__asn___asn FROM {tmp}/dim_asn.csv WITH delimiter as ',' csv header;"
+            ''')
+            os.system(copy_command.format(tmp=tmp,uri=uri))
     conn.close()
 
 def create_rds_tables():
     conn=connRDS.connect()
     tablenames = [
         'fact_count', 'agg_risk_country_week',
-        'agg_risk_country_month', 'agg_risk_country_quarter',
-        'agg_risk_country_year', 'dim_risk', 'dim_country', 
-        'dim_asn', 'dim_time'
+        'agg_risk_country_month', 'agg_risk_country_quarter', 'dim_asn',
+        'agg_risk_country_year', 'dim_risk', 'dim_country', 'dim_time'
     ]
     drop_tables(conn, tablenames)
-
     create_risk ='ALTER TABLE data__risk___risk RENAME TO dim_risk'
     create_country = 'ALTER TABLE data__country___country RENAME TO dim_country'
     create_asn = 'ALTER TABLE data__asn___asn RENAME TO dim_asn'
@@ -422,7 +437,7 @@ def run_redshift(tmpdir):
 
 
 def run_rds(tmpdir):
-    load_ref_data_rds(REF_DATA_URLS, connRDS)
+    load_ref_data_rds(REF_DATA_URLS, connRDS, tmpdir, config['rds_uri'])
     create_rds_tables()
     download_and_load(tmpdir)
     populate_tables()
@@ -432,6 +447,6 @@ def run_rds(tmpdir):
 
 if __name__ == '__main__':
     tmpdir = tempfile.mkdtemp()
-    run_redshift(tmpdir)
+    # run_redshift(tmpdir)
     run_rds(tmpdir)
     shutil.rmtree(tmpdir)
