@@ -31,7 +31,6 @@ import main
 connRedshift = create_engine('postgres://cg_test_user:secret@localhost/cg_test_db')
 connRDS = create_engine('postgres://cg_test_user:secret@localhost/cg_test_db')
 
-
 class RedshiftFunctionsTestCase(unittest.TestCase):
     # Test aggregation functions by week, ip, country and risk.
 
@@ -398,10 +397,12 @@ class RDSFunctionsTestCase(unittest.TestCase):
                      'tests/fixtures/country-datapackage.json',
                      'tests/fixtures/asn-datapackage.json']
         # drops temporay tables for ref data if exsists
+        main.drop_tables(main.connRDS, self.tablenames)
         main.drop_tables(main.connRDS, ['data__risk___risk',
                                         'data__country___country',
                                         'data__asn___asn'])
-        main.load_ref_data_rds(self.urls, main.connRDS)
+        self.uri = 'postgres://cg_test_user:secret@localhost/cg_test_db'
+        main.load_ref_data_rds(self.urls, main.connRDS, self.tmpdir, self.uri)
 
 
     def test_reference_tables_created(self):
@@ -434,8 +435,8 @@ class RDSFunctionsTestCase(unittest.TestCase):
                          (u'AA', u'Test country', u'test-country', u'test-regiton', u'test-continent'))
         self.cursor.execute('SELECT * FROM data__asn___asn')
         self.assertEqual(self.cursor.fetchone(), (111111.0, u'Test title', u'AA'))
-
-
+    
+    
     def test_rds_tables_created(self):
         '''
         Checks if all rds tables are created and temptables renamed
@@ -448,8 +449,8 @@ class RDSFunctionsTestCase(unittest.TestCase):
                 {'table': table})
             # If there is no table cursor.fetchone() will return None and fail
             self.assertEqual(self.cursor.fetchone()[0], table, msg=message.format(table=table))
-
-
+    
+    
     def test_populate_rds_tables(self):
         '''
         Checks if rds tables are populated
@@ -464,8 +465,8 @@ class RDSFunctionsTestCase(unittest.TestCase):
         for table in self.tablenames:
             self.cursor.execute('SELECT * FROM %(table)s LIMIT 1',{"table": AsIs(table)})
             self.assertNotEqual(self.cursor.fetchone(), None, msg=message.format(table=table))
-
-
+    
+    
     def test_create_constraints(self):
         '''
         Checks if all constraints are created
@@ -489,7 +490,7 @@ class RDSFunctionsTestCase(unittest.TestCase):
             self.assertEqual(self.cursor.fetchone()[0], c_name, msg=message.format(c_name=c_name))
         
         ## TODO: check indexes created
-
+    
     def tearDown(self):
         main.drop_tables(main.connRDS, self.tablenames)
 
