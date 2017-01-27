@@ -447,6 +447,6 @@ def run_rds(tmpdir):
 
 if __name__ == '__main__':
     tmpdir = tempfile.mkdtemp()
-    # run_redshift(tmpdir)
+    run_redshift(tmpdir)
     run_rds(tmpdir)
     shutil.rmtree(tmpdir)
