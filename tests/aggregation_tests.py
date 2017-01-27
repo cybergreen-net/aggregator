@@ -364,7 +364,7 @@ class RedshiftFunctionsTestCase(unittest.TestCase):
 
 
     def tearDown(self):
-        main.drop_tables(main.connRedshift, ['logentry', 'count', 'dim_risk'])
+        main.drop_tables(main.connRedshift, ['logentry', 'count', 'dim_risk','tmp_count'])
 
 
 
