@@ -437,11 +437,11 @@ def create_or_update_cubes(conn, cmd):
 
 def run_redshift(tmpdir):
     table_name = 'count'
-    # upload_manifest(tmpdir)
-    # create_redshift_tables()
-    # load_ref_data()
-    # load_data()
-    # count_data()
+    upload_manifest(tmpdir)
+    create_redshift_tables()
+    load_ref_data()
+    load_data()
+    count_data()
     aggregate()
     update_amplified_count()
     unload(table_name)
