@@ -1,0 +1,23 @@
+{
+  "rds_uri": "postgres://cg_test_user:secret@localhost/cg_test_db",
+  "redshift_uri": "postgres://cg_test_user:secret@localhost/cg_test_db",
+  "role_arn":"",
+  "source_path": "",
+  "dest_path": "",
+  "access_key":"",
+  "secret_key":"",
+  "inventory" : [
+    {
+      "name":"risk",
+      "url":"tests/fixtures/risk-datapackage.json"
+    },
+    {
+      "name":"country",
+      "url":"tests/fixtures/country-datapackage.json"
+    },
+    {
+      "name":"asn",
+      "url":"tests/fixtures/asn-datapackage.json"
+    }
+  ]
+}
