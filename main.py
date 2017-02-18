@@ -102,7 +102,7 @@ def upload_manifest(tmp_dir):
 def create_redshift_tables():
     conn = connRedshift.connect()
     tablenames = [
-        'dim_risk', 'logentry', 'count', 'tmp_count'
+        'dim_risk', 'logentry', 'count'
     ]
     drop_tables(conn, tablenames)
     create_logentry = dedent('''
@@ -123,13 +123,6 @@ def create_redshift_tables():
     asn BIGINT, count INT, count_amplified FLOAT
     )
     ''')
-    create_tmp_count = dedent('''
-    CREATE TABLE tmp_count(
-    ip VARCHAR(32), date TIMESTAMP, risk INT,
-    asn BIGINT, country VARCHAR(2)
-    )
-    ''')
-    conn.execute(create_tmp_count)
     conn.execute(create_risk)
     conn.execute(create_logentry)
     conn.execute(create_count)
@@ -183,16 +176,12 @@ def aggregate():
     conn = connRedshift.connect()
     print('Aggregating ...')
     query = dedent('''
-    INSERT INTO tmp_count
-    SELECT DISTINCT (ip), date_trunc('day', date) AS date, risk, asn, country FROM logentry
-    ''')
-    conn.execute(query)
-    query = dedent('''
     INSERT INTO count
-    SELECT
+    (SELECT
         date, risk, country, asn, count(*) as count, 0 as count_amplified
-    FROM tmp_count
-    GROUP BY date, asn, risk, country ORDER BY date DESC, country ASC, asn ASC, risk ASC
+    FROM(
+    SELECT DISTINCT (ip), date_trunc('day', date) AS date, risk, asn, country FROM logentry) AS foo
+    GROUP BY date, asn, risk, country ORDER BY date DESC, country ASC, asn ASC, risk ASC)
     ''')
     conn.execute(query)
     conn.close()
@@ -458,6 +447,6 @@ def run_rds(tmpdir):
 
 if __name__ == '__main__':
     tmpdir = tempfile.mkdtemp()
-    run_redshift(tmpdir)
+    # run_redshift(tmpdir)
     run_rds(tmpdir)
     shutil.rmtree(tmpdir)
