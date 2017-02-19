@@ -8,35 +8,20 @@ import json
 import os
 
 from StringIO import StringIO
-from tempfile import NamedTemporaryFile
 from textwrap import dedent
 
 from psycopg2.extensions import AsIs
 from sqlalchemy import create_engine
-from nose.plugins.attrib import attr
-from mock import patch
 
-# seting env variables for testing
-os.environ["CYBERGREEN_BUILD_ENV"] = ''
-os.environ["RDS_PASSWORD"] = ''
-os.environ["REDSHIFT_PASSWORD"] = ''
-os.environ["CYBERGREEN_SOURCE_ROOT"] = ''
-os.environ["CYBERGREEN_DEST_ROOT"] = ''
-os.environ["CYBERGREEN_BUILD_ENV"] = ''
-os.environ["AWS_ACCESS_KEY_ID"] = ''
-os.environ["AWS_SECRET_ACCESS_KEY"] = ''
+from main import Aggregator, LoadToRDS
 
-import main
-
-connRedshift = create_engine('postgres://cg_test_user:secret@localhost/cg_test_db')
-connRDS = create_engine('postgres://cg_test_user:secret@localhost/cg_test_db')
+config = json.loads(open('tests/config.test.json').read())
 
 class RedshiftFunctionsTestCase(unittest.TestCase):
     # Test aggregation functions by week, ip, country and risk.
 
     def setUp(self):
-        # Patch main connection with the test one.
-        patch('main.connRedshift', connRedshift).start()
+        self.aggregator = Aggregator(config=config)
 
         # reference data with amplification factors
         self.scan_csv = dedent('''\
@@ -47,19 +32,16 @@ class RedshiftFunctionsTestCase(unittest.TestCase):
         5,,,30.8,
         ''')
         # set configurations
-        self.config = {"inventory": [{
-            "name": 'risk', "url": "tests/fixtures/risk-datapackage.json"
-            }]}
-        self.cursor = main.connRedshift.raw_connection().cursor()
+        self.cursor = self.aggregator.connRedshift.raw_connection().cursor()
         # create tables
-        main.create_redshift_tables()
+        self.aggregator.create_tables()
 
 
     def test_all_tables_created(self):
         '''
         Checks if all necessary tables are created for redshift
         '''
-        main.create_redshift_tables()
+        self.aggregator.create_tables()
         self.cursor.execute(
             'select exists(select * from information_schema.tables where table_name=%(table)s)',
             {'table': 'logentry'})
@@ -78,18 +60,24 @@ class RedshiftFunctionsTestCase(unittest.TestCase):
         '''
         Checks if tebles ar dropped
         '''
-        main.drop_tables(main.connRedshift, ['logentry', 'count', 'dim_risk'])
+        self.aggregator.drop_tables(
+            self.aggregator.connRedshift,
+            ['logentry', 'count', 'dim_risk']
+        )
         self.cursor.execute(
             'select exists(select * from information_schema.tables where table_name=%(table)s)',
-            {'table': 'logentry'})
+            {'table': 'logentry'}
+        )
         self.assertEqual(self.cursor.fetchone()[0], False)
         self.cursor.execute(
             'select exists(select * from information_schema.tables where table_name=%(table)s)',
-            {'table': 'count'})
+            {'table': 'count'}
+        )
         self.assertEqual(self.cursor.fetchone()[0], False)
         self.cursor.execute(
             'select exists(select * from information_schema.tables where table_name=%(table)s)',
-            {'table': 'dim_risk'})
+            {'table': 'dim_risk'}
+        )
         self.assertEqual(self.cursor.fetchone()[0], False)
 
 
@@ -98,7 +86,7 @@ class RedshiftFunctionsTestCase(unittest.TestCase):
         Checks if reference data is loaded from given url
         '''
         # load data
-        main.load_ref_data(self.config)
+        self.aggregator.load_ref_data()
         self.cursor.execute('SELECT * FROM dim_risk')
         self.assertEqual(self.cursor.fetchone(), (0, u'test-risk', u'Test Risk', 0.13456, u''))
 
@@ -117,14 +105,14 @@ class RedshiftFunctionsTestCase(unittest.TestCase):
         ''')
         self.cursor.copy_expert('COPY logentry from STDIN csv header', StringIO(scan_csv))
 
-        main.aggregate()
+        self.aggregator.aggregate()
 
         # count table should have 2 entries - 1 with cout of 2 and other with count of 1
         self.cursor.execute('select * from count;')
         self.assertEqual(
             self.cursor.fetchall(),
             [
-                (datetime.datetime(2016, 9, 29, 0, 0), 2, 'US', 12252L, 1, 0.0),  
+                (datetime.datetime(2016, 9, 29, 0, 0), 2, 'US', 12252L, 1, 0.0),
                 (datetime.datetime(2016, 9, 20, 0, 0), 2, 'US', 12252L, 2, 0.0) # grouped two entries
             ])
 
@@ -143,14 +131,14 @@ class RedshiftFunctionsTestCase(unittest.TestCase):
         ''')
         self.cursor.copy_expert("COPY logentry from STDIN csv header", StringIO(scan_csv))
 
-        main.aggregate()
+        self.aggregator.aggregate()
 
         # count table should have 2 entries with 1 count each
         self.cursor.execute('select * from count;')
         self.assertEqual(
             self.cursor.fetchall(),
             [
-                (datetime.datetime(2016, 9, 29, 0, 0), 2, 'US', 12252L, 1, 0.0),  
+                (datetime.datetime(2016, 9, 29, 0, 0), 2, 'US', 12252L, 1, 0.0),
                 (datetime.datetime(2016, 9, 20, 0, 0), 2, 'US', 12252L, 1, 0.0)
             ])
 
@@ -170,14 +158,14 @@ class RedshiftFunctionsTestCase(unittest.TestCase):
         ''')
         self.cursor.copy_expert("COPY logentry from STDIN csv header", StringIO(scan_csv))
 
-        main.aggregate()
+        self.aggregator.aggregate()
 
         #count table should have 2 rows corresponding to different risks, with properly grouped entries
         self.cursor.execute('select * from count;')
         self.assertEqual(
             self.cursor.fetchall(),
             [
-                (datetime.datetime(2016, 9, 29, 0, 0), 1, 'US', 12252L, 1, 0.0),  
+                (datetime.datetime(2016, 9, 29, 0, 0), 1, 'US', 12252L, 1, 0.0),
                 (datetime.datetime(2016, 9, 29, 0, 0), 2, 'US', 12252L, 2, 0.0)
             ])
 
@@ -195,7 +183,7 @@ class RedshiftFunctionsTestCase(unittest.TestCase):
         ''')
         self.cursor.copy_expert("COPY logentry from STDIN csv header", StringIO(scan_csv))
 
-        main.aggregate()
+        self.aggregator.aggregate()
 
         # count table should have 2 entries - US with count of 2, and DE with count of 1
         self.cursor.execute('select * from count;')
@@ -203,7 +191,7 @@ class RedshiftFunctionsTestCase(unittest.TestCase):
             self.cursor.fetchall(),
             [
                 (datetime.datetime(2016, 9, 29, 0, 0), 2, 'DE', 3333L, 1, 0.0),
-                (datetime.datetime(2016, 9, 29, 0, 0), 2, 'US', 12252L, 2, 0.0)  
+                (datetime.datetime(2016, 9, 29, 0, 0), 2, 'US', 12252L, 2, 0.0)
             ])
 
 
@@ -220,7 +208,7 @@ class RedshiftFunctionsTestCase(unittest.TestCase):
         ''')
         self.cursor.copy_expert("COPY logentry from STDIN csv header", StringIO(scan_csv))
 
-        main.aggregate()
+        self.aggregator.aggregate()
 
         # count table should have 2 entries - AS 12252 with count of 2, and AS 3333 with count of 1
         self.cursor.execute('select * from count;')
@@ -261,7 +249,7 @@ class RedshiftFunctionsTestCase(unittest.TestCase):
         ''')
         self.cursor.copy_expert("COPY logentry from STDIN csv header", StringIO(scan_csv))
 
-        main.aggregate()
+        self.aggregator.aggregate()
 
         # count table should have 2 entries - US with count of 2, and DE with count of 1
         self.cursor.execute('select * from count;')
@@ -292,7 +280,7 @@ class RedshiftFunctionsTestCase(unittest.TestCase):
         Checks if amplified counts are calculated correctly for each risk
         '''
         # recreate tables
-        main.create_redshift_tables()
+        self.aggregator.create_tables()
         # GIVEN 4 entries of the same day, country, ASN an IP but different risks
         scan_csv = dedent('''\
         ts,ip,risk_id,asn,cc
@@ -305,8 +293,8 @@ class RedshiftFunctionsTestCase(unittest.TestCase):
         # import ref data
         self.cursor.copy_expert("COPY dim_risk from STDIN csv header", StringIO(self.scan_csv))
 
-        main.aggregate()
-        main.update_amplified_count()
+        self.aggregator.aggregate()
+        self.aggregator.update_amplified_count()
         self.maxDiff = None
 
         self.cursor.execute('select * from count;')
@@ -325,7 +313,7 @@ class RedshiftFunctionsTestCase(unittest.TestCase):
         Checks if amplified counts are calculated correctly for each risk when grouped
         '''
         # recreate tables
-        main.create_redshift_tables()
+        self.aggregator.create_tables()
         # GIVEN 4 entries of the same day, country, ASN, but different risks
         scan_csv = dedent('''\
         ts,ip,risk_id,asn,cc
@@ -348,8 +336,8 @@ class RedshiftFunctionsTestCase(unittest.TestCase):
         # import ref data
         self.cursor.copy_expert("COPY dim_risk from STDIN csv header", StringIO(self.scan_csv))
 
-        main.aggregate()
-        main.update_amplified_count()
+        self.aggregator.aggregate()
+        self.aggregator.update_amplified_count()
         self.maxDiff = None
 
         self.cursor.execute('select * from count;')
@@ -364,7 +352,7 @@ class RedshiftFunctionsTestCase(unittest.TestCase):
 
 
     def tearDown(self):
-        main.drop_tables(main.connRedshift, ['logentry', 'count', 'dim_risk','tmp_count'])
+        self.aggregator.drop_tables(self.aggregator.connRedshift, ['logentry', 'count', 'dim_risk'])
 
 
 
@@ -372,17 +360,13 @@ class RDSFunctionsTestCase(unittest.TestCase):
     # Test aggregation functions by week, ip, country and risk.
 
     def setUp(self):
-        # Patch main connection with the test one.
-        patch('main.connRDS', connRDS).start()
-
-        self.cursor = main.connRDS.raw_connection().cursor()
-        self.tmpdir = tempfile.mkdtemp()
-
+        self.loader = LoadToRDS(config=config)
+        self.cursor = self.loader.connRDS.raw_connection().cursor()
         self.tablenames = [
             'fact_count', 'agg_risk_country_week',
             'agg_risk_country_month', 'agg_risk_country_quarter',
-            'agg_risk_country_year', 'dim_risk', 'dim_country', 
-            'dim_asn', 'dim_time'
+            'agg_risk_country_year', 'dim_risk', 'dim_country',
+            'dim_asn', 'dim_date'
         ]
         # snipet for fact_count table
         self.counts = dedent('''
@@ -392,17 +376,12 @@ class RDSFunctionsTestCase(unittest.TestCase):
         2014-10-21,0,ZZ,999999,4,25.2
         2014-10-03,0,AA,111111,2,1113.8
         ''')
-        # set configurations
-        self.urls = ['tests/fixtures/risk-datapackage.json',
-                     'tests/fixtures/country-datapackage.json',
-                     'tests/fixtures/asn-datapackage.json']
         # drops temporay tables for ref data if exsists
-        main.drop_tables(main.connRDS, self.tablenames)
-        main.drop_tables(main.connRDS, ['data__risk___risk',
+        self.loader.drop_tables(self.tablenames)
+        self.loader.drop_tables(['data__risk___risk',
                                         'data__country___country',
                                         'data__asn___asn'])
-        self.uri = 'postgres://cg_test_user:secret@localhost/cg_test_db'
-        main.load_ref_data_rds(self.urls, main.connRDS, self.tmpdir, self.uri)
+        self.loader.load_ref_data_rds()
 
 
     def test_reference_tables_created(self):
@@ -421,8 +400,8 @@ class RDSFunctionsTestCase(unittest.TestCase):
             'select exists(select * from information_schema.tables where table_name=%(table)s)',
             {'table': 'data__asn___asn'})
         self.assertEqual(self.cursor.fetchone()[0], True)
-    
-    
+
+
     def test_reference_data_loaded_in_temptables(self):
         '''
         Ckecks if ref data is loaded in tem tables
@@ -435,13 +414,13 @@ class RDSFunctionsTestCase(unittest.TestCase):
                          (u'AA', u'Test country', u'test-country', u'test-regiton', u'test-continent'))
         self.cursor.execute('SELECT * FROM data__asn___asn')
         self.assertEqual(self.cursor.fetchone(), (111111.0, u'Test title', u'AA'))
-    
-    
+
+
     def test_rds_tables_created(self):
         '''
         Checks if all rds tables are created and temptables renamed
         '''
-        main.create_rds_tables()
+        self.loader.create_tables()
         message='Table %(table) is not created'
         for table in self.tablenames:
             self.cursor.execute(
@@ -449,53 +428,73 @@ class RDSFunctionsTestCase(unittest.TestCase):
                 {'table': table})
             # If there is no table cursor.fetchone() will return None and fail
             self.assertEqual(self.cursor.fetchone()[0], table, msg=message.format(table=table))
-    
-    
+
+
     def test_populate_rds_tables(self):
         '''
         Checks if rds tables are populated
         '''
         message = 'Table {table} is empty'
         # Create tables and pouplate fact_cunt
-        main.create_rds_tables()
-        self.cursor.copy_expert("COPY fact_count from STDIN csv header", StringIO(self.counts))
+        self.loader.create_tables()
+        self.loader.connRDS.connect().execute(dedent("""
+            INSERT INTO fact_count
+            VALUES
+                ('2016-09-03',0,'AA',111111,1,30.8),
+                ('2016-11-13',0,'ZZ',999999,33,1353),
+                ('2016-05-22',0,'AA',111111,10,410),
+                ('2014-10-21',0,'ZZ',999999,4,25.2),
+                ('2014-10-03',0,'AA',111111,2,1113.8)
+            """))
+        self.loader.connRDS.connect().close()
+        self.loader.populate_tables()
         # After running populate tables
-        main.populate_tables()
         # If there is no entry cursor.fetchone() will return None and fail
         for table in self.tablenames:
             self.cursor.execute('SELECT * FROM %(table)s LIMIT 1',{"table": AsIs(table)})
             self.assertNotEqual(self.cursor.fetchone(), None, msg=message.format(table=table))
-    
-    
+
+
     def test_create_constraints(self):
         '''
         Checks if all constraints are created
         '''
         c_names = [
-            'dim_risk_pkey', 'dim_country_pkey', 'dim_asn_pkey', 'dim_time_pkey',
+            'dim_risk_pkey', 'dim_country_pkey', 'dim_asn_pkey', 'dim_date_pkey',
             'fk_country_asn', 'fk_count_risk', 'fk_count_country', 'fk_count_asn',
             'fk_count_time', 'fk_cube_risk_week','fk_cube_risk_month', 'fk_cube_risk_quarter',
             'fk_cube_risk_year', 'fk_cube_country_week', 'fk_cube_country_month',
             'fk_cube_country_quarter','fk_cube_country_year']
         message = 'Constraint {c_name} is not created'
         # Create tables and pouplate them
-        main.create_rds_tables()
-        self.cursor.copy_expert("COPY fact_count from STDIN csv header", StringIO(self.counts))
-        main.populate_tables()
-        main.create_constraints()
+        self.loader.create_tables()
+        self.loader.connRDS.connect().execute(dedent("""
+            INSERT INTO fact_count
+            VALUES
+                ('2016-09-03',0,'AA',111111,1,30.8),
+                ('2016-11-13',0,'ZZ',999999,33,1353),
+                ('2016-05-22',0,'AA',111111,10,410),
+                ('2014-10-21',0,'ZZ',999999,4,25.2),
+                ('2014-10-03',0,'AA',111111,2,1113.8)
+            """))
+        self.loader.populate_tables()
+        self.loader.create_constraints()
         for c_name in c_names:
             self.cursor.execute("select constraint_name from information_schema.table_constraints WHERE constraint_name = %(c_name)s",
                                 {'c_name': c_name})
             # If there is no constraint cursor.fetchone() will return None and fail
             self.assertEqual(self.cursor.fetchone()[0], c_name, msg=message.format(c_name=c_name))
-        
-        ## TODO: check indexes created
-    
+
+        # TODO: check indexes created
+
     def tearDown(self):
-        main.drop_tables(main.connRDS, self.tablenames)
+        self.loader.drop_tables(self.tablenames)
 
 
 class MetadataTestCase(unittest.TestCase):
+    def setUp(self):
+        self.aggregator = Aggregator(config=config)
+
 
     def test_create_manifest(self):
         '''
@@ -524,5 +523,5 @@ class MetadataTestCase(unittest.TestCase):
             {'url': u's3://test.bucket/test/key/dns-scan/dns-scan.20000101.csv.gz',
              'mandatory': True}
             ]}
-        manifest = main.create_manifest(datapackage, 's3://test.bucket/test/key')
+        manifest = self.aggregator.create_manifest(datapackage, 's3://test.bucket/test/key')
         self.assertEquals(manifest,expected_manifest)
