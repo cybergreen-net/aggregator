@@ -13,7 +13,7 @@ from textwrap import dedent
 from psycopg2.extensions import AsIs
 from sqlalchemy import create_engine
 
-from main import Aggregator, LoadToRDS
+from aggregator.main import Aggregator, LoadToRDS
 
 config = json.loads(open('tests/config.test.json').read())
 
