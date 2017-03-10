@@ -26,10 +26,10 @@ class RedshiftFunctionsTestCase(unittest.TestCase):
         # reference data with amplification factors
         self.scan_csv = dedent('''\
         id,slug,title,amplification_factor,description
-        1,,,41,
-        2,,,556.9,
-        4,,,6.3,
-        5,,,30.8,
+        1,,,,,41,
+        2,,,,,556.9,
+        4,,,,,6.3,
+        5,,,,,30.8,
         ''')
         # set configurations
         self.cursor = self.aggregator.connRedshift.raw_connection().cursor()
@@ -58,7 +58,7 @@ class RedshiftFunctionsTestCase(unittest.TestCase):
 
     def test_drop_tables(self):
         '''
-        Checks if tebles ar dropped
+        Checks if tables are dropped
         '''
         self.aggregator.drop_tables(
             self.aggregator.connRedshift,
@@ -88,7 +88,7 @@ class RedshiftFunctionsTestCase(unittest.TestCase):
         # load data
         self.aggregator.load_ref_data()
         self.cursor.execute('SELECT * FROM dim_risk')
-        self.assertEqual(self.cursor.fetchone(), (0, u'test-risk', u'Test Risk', 0.13456, u''))
+        self.assertEqual(self.cursor.fetchone(), (0, u'test-risk', u'Test Risk','Testable','count', 0.13456, u''))
 
 
     def test_group_by_day(self):
@@ -172,7 +172,7 @@ class RedshiftFunctionsTestCase(unittest.TestCase):
 
     def test_group_by_country(self):
         '''
-        Checks if entries with same county are gurped and summed up
+        Checks if entries with same county are grouped and summed up
         '''
         # GIVEN 3 entries of the same risk and day, two of which are from one country
         scan_csv = dedent('''\
@@ -197,7 +197,7 @@ class RedshiftFunctionsTestCase(unittest.TestCase):
 
     def test_group_by_asn(self):
         '''
-        Checks if entries with same asn are gurped and summed up
+        Checks if entries with same asn are grouped and summed up
         '''
         # GIVEN 3 entries of the same risk, country and day, two of which have the same asn
         scan_csv = dedent('''\
@@ -222,7 +222,7 @@ class RedshiftFunctionsTestCase(unittest.TestCase):
 
     def test_end_to_end_aggregaton(self):
         '''
-        Ckeks if entries same date, risk, country, asn are grouped seperately
+        Checks if entries same date, risk, country, asn are grouped separately
         and summed up correctly
         '''
         # GIVEN 17 entries of the 2 different risk, day, country and asn.
@@ -386,7 +386,7 @@ class RDSFunctionsTestCase(unittest.TestCase):
 
     def test_reference_tables_created(self):
         '''
-        Ckecks if temporary tables for ref data are created
+        Checks if temporary tables for ref data are created
         '''
         self.cursor.execute(
             'select exists(select * from information_schema.tables where table_name=%(table)s)',
@@ -404,11 +404,11 @@ class RDSFunctionsTestCase(unittest.TestCase):
 
     def test_reference_data_loaded_in_temptables(self):
         '''
-        Ckecks if ref data is loaded in tem tables
+        Checks if ref data is loaded in temp tables
         '''
         self.cursor.execute('SELECT * FROM data__risk___risk')
         self.assertEqual(self.cursor.fetchone(),
-                         (0.0, u'test-risk', u'Test Risk', 0.13456, u'Nice\nSmall\nDescription'))
+                         (0.0, u'test-risk', u'Test Risk','Testable','count', 0.13456, u'Nice\nSmall\nDescription'))
         self.cursor.execute('SELECT * FROM data__country___country')
         self.assertEqual(self.cursor.fetchone(),
                          (u'AA', u'Test country', u'test-country', u'test-regiton', u'test-continent'))

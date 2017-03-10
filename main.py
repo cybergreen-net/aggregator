@@ -130,6 +130,7 @@ class Aggregator(object):
         create_risk = dedent('''
         CREATE TABLE dim_risk(
         id INT, slug VARCHAR(32), title VARCHAR(32),
+        taxonomy VARCHAR(16), measurement_units VARCHAR(32),
         amplification_factor FLOAT, description TEXT
         )
         ''')
@@ -173,7 +174,7 @@ class Aggregator(object):
         risks = dp.resources[0].data
         query = dedent('''
         INSERT INTO dim_risk
-        VALUES (%(id)s, %(slug)s, %(title)s, %(amplification_factor)s, %(description)s)''')
+        VALUES (%(id)s, %(slug)s, %(title)s, %(taxonomy)s, %(measurement_units)s, %(amplification_factor)s, %(description)s)''')
         for risk in risks:
             # description is too long and not needed here
             risk['description']=''
