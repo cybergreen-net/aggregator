@@ -26,6 +26,16 @@
             "description": "Actual name for given risk"
           },
           {
+            "name": "taxonomy",
+            "type": "string",
+            "description": "Taxonomy for given risk"
+          },
+          {
+            "name": "measurement_units",
+            "type": "string",
+            "description": "Measurement unit for given risk"
+          },
+          {
             "name": "amplification_factor",
             "type": "number",
             "description": "Amplification factor for given risk"
