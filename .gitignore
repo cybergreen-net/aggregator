@@ -1,3 +1,4 @@
 .env.json
 sandbox/*
 *.pyc
+datapackage.json
