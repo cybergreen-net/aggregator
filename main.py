@@ -312,16 +312,18 @@ class LoadToRDS(object):
 
         for url in self.ref_data_urls:
             # Loading of asn with push_datapackage takes more then 2 hours
-            # So have to download localy and sasve (takes ~5 seconds)
+            # So have to download locally and save (takes ~5 seconds)
             if 'asn' not in url:
                 push_datapackage(descriptor=url, backend='sql', engine=conn)
             else:
                 dp = datapackage.DataPackage(url)
-                # local path will be returned if not found remote one (fot tests)
-                url = dp.resources[0].remote_data_path or dp.resources[0].local_data_path
-                r = requests.get(url)
-                with open(join(self.tmpdir, 'asn.csv'),"wb") as fp:
-                    fp.write(r.content)
+                # local path will be returned if not found remote one (for tests)
+                if dp.resources[0].remote_data_path:
+                    r = requests.get(dp.resources[0].remote_data_path)
+                    with open(join(self.tmpdir, 'asn.csv'),"wb") as fp:
+                        fp.write(r.content)
+                else:
+                    shutil.copy(dp.resources[0].local_data_path,join(self.tmpdir, 'asn.csv'))
                 # TODO: replace shelling out
                 copy_command = dedent('''
                 psql {uri} -c "\COPY data__asn___asn FROM {tmp}/asn.csv WITH delimiter as ',' csv header;"
