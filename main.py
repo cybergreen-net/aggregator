@@ -7,10 +7,11 @@ from os.path import dirname, join
 from string import Template
 from textwrap import dedent
 
+import logging
 import datapackage
 import tempfile
 import shutil
-import urllib
+import requests
 import boto3
 import json
 import csv
@@ -87,23 +88,25 @@ class Aggregator(object):
             )
 
 
-    def create_manifest(self, datapackage, source):
-        datapackage = json.loads(datapackage)
+    def create_manifest(self, datapackage_string, source):
+        datapackage = json.loads(datapackage_string)
         manifest = {"entries": []}
         keys = (p['path'] for p in datapackage.get('resources'))
         for key_list in keys:
             for key in key_list:
+                logging.info("Adding {} to manifest".format(key))
                 manifest['entries'].append({"url": join(source,key), "mandatory": True})
         return manifest
 
 
     def upload_manifest(self):
-        tmp_manifest = join(self.tmpdir,'clean.manifest')
-        s3bucket, key = split_s3_path(self.config.get('source_path'))
+        tmp_manifest = join(self.tmpdir, 'clean.manifest')
+        s3bucket, key = split_s3_path(self.config.get('dest_path'))
         dp_key = join(key, 'datapackage.json')
+        logging.info("dp_key is {}".format(dp_key))
         obj = self.conns3.Object(s3bucket, dp_key)
-        dp = obj.get()['Body'].read()
-        manifest = self.create_manifest(dp, self.config.get('source_path'))
+        dp = obj.get()['Body'].read().decode()
+        manifest = self.create_manifest(dp, self.config.get('dest_path'))
 
         f = open(tmp_manifest, 'w')
         json.dump(manifest, f)
@@ -111,8 +114,8 @@ class Aggregator(object):
 
         key = join(key, 'clean.manifest')
         obj = self.conns3.Object(s3bucket, key)
-        obj.put(Body=open(tmp_manifest))
-        print('Manifest Updated')
+        obj.put(Body=open(tmp_manifest,"rb"))
+        logging.info('Manifest Updated')
 
 
     def create_tables(self):
@@ -144,12 +147,12 @@ class Aggregator(object):
         conn.execute(create_logentry)
         conn.execute(create_count)
         conn.close()
-        print('Redshift tables created')
+        logging.info('Redshift tables created')
 
 
     def load_data(self):
         conn = self.connRedshift.connect()
-        manifest = join(self.config.get('source_path'), 'clean.manifest')
+        manifest = join(self.config.get('dest_path'), 'clean.manifest')
         copycmd = dedent('''
         COPY logentry FROM '%s'
         CREDENTIALS 'aws_iam_role=%s'
@@ -158,10 +161,10 @@ class Aggregator(object):
         TIMEFORMAT AS 'auto'
         MANIFEST
         ''')
-        print('Loading data into db ... ')
+        logging.info('Loading data into db ... ')
         conn.execute(copycmd%(manifest, self.config.get('role_arn')))
         conn.close()
-        print('Data Loaded')
+        logging.info('Data Loaded')
 
 
     def load_ref_data(self):
@@ -186,12 +189,12 @@ class Aggregator(object):
         cmd = 'SELECT count(*) FROM logentry'
         cursor = self.connRedshift.raw_connection().cursor()
         cursor.execute(cmd)
-        print(cursor.fetchone())
+        logging.info(cursor.fetchone())
 
 
     def aggregate(self):
         conn = self.connRedshift.connect()
-        print('Aggregating ...')
+        logging.info('Aggregating ...')
         query = dedent('''
         INSERT INTO count
         (SELECT
@@ -206,7 +209,7 @@ class Aggregator(object):
 
     def update_amplified_count(self):
         conn = self.connRedshift.connect()
-        print('Calculating Amplificated Counts ...')
+        logging.info('Calculating Amplificated Counts ...')
         query = dedent('''
         UPDATE count
         SET count_amplified = count*amplification_factor
@@ -214,7 +217,7 @@ class Aggregator(object):
         ''')
         conn.execute(query)
         conn.close()
-        print('Aggregation Finished!')
+        logging.info('Aggregation Finished!')
 
 
     def unload(self, table):
@@ -228,13 +231,13 @@ class Aggregator(object):
         DELIMITER AS ','
         ALLOWOVERWRITE
         PARALLEL OFF
-        ''')%(join(self.config.get('dest_path'), table), aws_auth_args))
+        ''')%(join(self.config.get('agg_path'), table), aws_auth_args))
         conn.close()
 
-        bucket, key = split_s3_path(self.config.get('dest_path'))
+        bucket, key = split_s3_path(self.config.get('agg_path'))
         self.add_extention(bucket, '%s000'%(join(key, table)))
         self.delete_key(bucket, '%s000'%(join(key, table)))
-        print('Data Unloaded To s3')
+        logging.info('Data Unloaded To s3')
 
 
     def add_extention(self, bucket, key):
@@ -284,14 +287,15 @@ class LoadToRDS(object):
 
 
     def download_and_load(self):
-        print('Downloading csv file ...')
-        bucket, key = split_s3_path(self.config.get('dest_path'))
+        logging.info('Downloading csv file ...')
+        bucket, key = split_s3_path(self.config.get('agg_path'))
         s3paths = [(join(self.tmpdir,'count.csv'),join(key,'count.csv'))]
         bucket = self.conns3.Bucket(bucket)
         for path in s3paths:
             bucket.download_file(path[1], path[0])
 
-        print('Loading into RDS ...')
+        logging.info('Loading into RDS ...')
+        # TODO: replace shelling out to psql
         copy_command = dedent('''
         psql {uri} -c "\COPY fact_count FROM {tmp}/count.csv WITH delimiter as ',' null '' csv;"
         ''')
@@ -299,7 +303,7 @@ class LoadToRDS(object):
 
 
     def load_ref_data_rds(self):
-        print('Loading reference_data to RDS ...')
+        logging.info('Loading reference_data to RDS ...')
         conn = self.connRDS.connect()
         # creating dim_asn table here with other ref data
         conn.execute('DROP TABLE IF EXISTS data__asn___asn CASCADE')
@@ -308,14 +312,19 @@ class LoadToRDS(object):
 
         for url in self.ref_data_urls:
             # Loading of asn with push_datapackage takes more then 2 hours
-            # So have to download localy and sasve (takes ~5 seconds)
+            # So have to download locally and save (takes ~5 seconds)
             if 'asn' not in url:
-                push_datapackage(descriptor=url,backend='sql',engine=conn)
+                push_datapackage(descriptor=url, backend='sql', engine=conn)
             else:
                 dp = datapackage.DataPackage(url)
-                # local path will be returned if not found remote one (fot tests)
-                url = dp.resources[0].remote_data_path or dp.resources[0].local_data_path
-                urllib.urlretrieve(url, join(self.tmpdir, 'asn.csv'))
+                # local path will be returned if not found remote one (for tests)
+                if dp.resources[0].remote_data_path:
+                    r = requests.get(dp.resources[0].remote_data_path)
+                    with open(join(self.tmpdir, 'asn.csv'),"wb") as fp:
+                        fp.write(r.content)
+                else:
+                    shutil.copy(dp.resources[0].local_data_path,join(self.tmpdir, 'asn.csv'))
+                # TODO: replace shelling out
                 copy_command = dedent('''
                 psql {uri} -c "\COPY data__asn___asn FROM {tmp}/asn.csv WITH delimiter as ',' csv header;"
                 ''')
@@ -369,7 +378,7 @@ class LoadToRDS(object):
 
 
     def populate_tables(self):
-        print('Populating cubes')
+        logging.info('Populating cubes')
         conn=self.connRDS.connect()
         update_date = dedent('''
         INSERT INTO dim_date
