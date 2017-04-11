@@ -1,4 +1,6 @@
 .env.json
 sandbox/*
+venv/
 *.pyc
 datapackage.json
+idea/
