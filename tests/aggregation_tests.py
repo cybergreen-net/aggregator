@@ -7,7 +7,7 @@ import datetime
 import json
 import os
 
-from StringIO import StringIO
+from io import StringIO
 from textwrap import dedent
 
 from psycopg2.extensions import AsIs
@@ -112,8 +112,8 @@ class RedshiftFunctionsTestCase(unittest.TestCase):
         self.assertEqual(
             self.cursor.fetchall(),
             [
-                (datetime.datetime(2016, 9, 29, 0, 0), 2, 'US', 12252L, 1, 0.0),
-                (datetime.datetime(2016, 9, 20, 0, 0), 2, 'US', 12252L, 2, 0.0) # grouped two entries
+                (datetime.datetime(2016, 9, 29, 0, 0), 2, 'US', 12252, 1, 0.0),
+                (datetime.datetime(2016, 9, 20, 0, 0), 2, 'US', 12252, 2, 0.0) # grouped two entries
             ])
 
 
@@ -138,8 +138,8 @@ class RedshiftFunctionsTestCase(unittest.TestCase):
         self.assertEqual(
             self.cursor.fetchall(),
             [
-                (datetime.datetime(2016, 9, 29, 0, 0), 2, 'US', 12252L, 1, 0.0),
-                (datetime.datetime(2016, 9, 20, 0, 0), 2, 'US', 12252L, 1, 0.0)
+                (datetime.datetime(2016, 9, 29, 0, 0), 2, 'US', 12252, 1, 0.0),
+                (datetime.datetime(2016, 9, 20, 0, 0), 2, 'US', 12252, 1, 0.0)
             ])
 
 
@@ -165,8 +165,8 @@ class RedshiftFunctionsTestCase(unittest.TestCase):
         self.assertEqual(
             self.cursor.fetchall(),
             [
-                (datetime.datetime(2016, 9, 29, 0, 0), 1, 'US', 12252L, 1, 0.0),
-                (datetime.datetime(2016, 9, 29, 0, 0), 2, 'US', 12252L, 2, 0.0)
+                (datetime.datetime(2016, 9, 29, 0, 0), 1, 'US', 12252, 1, 0.0),
+                (datetime.datetime(2016, 9, 29, 0, 0), 2, 'US', 12252, 2, 0.0)
             ])
 
 
@@ -190,8 +190,8 @@ class RedshiftFunctionsTestCase(unittest.TestCase):
         self.assertEqual(
             self.cursor.fetchall(),
             [
-                (datetime.datetime(2016, 9, 29, 0, 0), 2, 'DE', 3333L, 1, 0.0),
-                (datetime.datetime(2016, 9, 29, 0, 0), 2, 'US', 12252L, 2, 0.0)
+                (datetime.datetime(2016, 9, 29, 0, 0), 2, 'DE', 3333, 1, 0.0),
+                (datetime.datetime(2016, 9, 29, 0, 0), 2, 'US', 12252, 2, 0.0)
             ])
 
 
@@ -215,8 +215,8 @@ class RedshiftFunctionsTestCase(unittest.TestCase):
         self.assertEqual(
             self.cursor.fetchall(),
             [
-                (datetime.datetime(2016, 9, 29, 0, 0), 2, 'US', 3333L, 1, 0.0),
-                (datetime.datetime(2016, 9, 29, 0, 0), 2, 'US', 12252L, 2, 0.0)
+                (datetime.datetime(2016, 9, 29, 0, 0), 2, 'US', 3333, 1, 0.0),
+                (datetime.datetime(2016, 9, 29, 0, 0), 2, 'US', 12252, 2, 0.0)
             ])
 
 
@@ -256,22 +256,22 @@ class RedshiftFunctionsTestCase(unittest.TestCase):
         self.assertEqual(
             self.cursor.fetchall(),
             [
-                (datetime.datetime(2016, 9, 29, 0, 0), 1, 'DE', 1224L, 1, 0.0),
-                (datetime.datetime(2016, 9, 29, 0, 0), 2, 'DE', 1224L, 1, 0.0),
-                (datetime.datetime(2016, 9, 29, 0, 0), 1, 'DE', 1225L, 1, 0.0),
-                (datetime.datetime(2016, 9, 29, 0, 0), 2, 'DE', 1225L, 1, 0.0),
-                (datetime.datetime(2016, 9, 29, 0, 0), 1, 'US', 122L, 1, 0.0),
-                (datetime.datetime(2016, 9, 29, 0, 0), 2, 'US', 122L, 1, 0.0),
-                (datetime.datetime(2016, 9, 29, 0, 0), 1, 'US', 12252L, 1, 0.0),
-                (datetime.datetime(2016, 9, 29, 0, 0), 2, 'US', 12252L, 1, 0.0),
-                (datetime.datetime(2016, 9, 28, 0, 0), 1, 'DE', 1224L, 1, 0.0),
-                (datetime.datetime(2016, 9, 28, 0, 0), 2, 'DE', 1224L, 1, 0.0),
-                (datetime.datetime(2016, 9, 28, 0, 0), 1, 'DE', 1225L, 1, 0.0),
-                (datetime.datetime(2016, 9, 28, 0, 0), 2, 'DE', 1225L, 1, 0.0),
-                (datetime.datetime(2016, 9, 28, 0, 0), 1, 'US', 122L, 1, 0.0),
-                (datetime.datetime(2016, 9, 28, 0, 0), 2, 'US', 122L, 1, 0.0),
-                (datetime.datetime(2016, 9, 28, 0, 0), 1, 'US', 12252L, 1, 0.0),
-                (datetime.datetime(2016, 9, 28, 0, 0), 2, 'US', 12252L, 1, 0.0)
+                (datetime.datetime(2016, 9, 29, 0, 0), 1, 'DE', 1224, 1, 0.0),
+                (datetime.datetime(2016, 9, 29, 0, 0), 2, 'DE', 1224, 1, 0.0),
+                (datetime.datetime(2016, 9, 29, 0, 0), 1, 'DE', 1225, 1, 0.0),
+                (datetime.datetime(2016, 9, 29, 0, 0), 2, 'DE', 1225, 1, 0.0),
+                (datetime.datetime(2016, 9, 29, 0, 0), 1, 'US', 122, 1, 0.0),
+                (datetime.datetime(2016, 9, 29, 0, 0), 2, 'US', 122, 1, 0.0),
+                (datetime.datetime(2016, 9, 29, 0, 0), 1, 'US', 12252, 1, 0.0),
+                (datetime.datetime(2016, 9, 29, 0, 0), 2, 'US', 12252, 1, 0.0),
+                (datetime.datetime(2016, 9, 28, 0, 0), 1, 'DE', 1224, 1, 0.0),
+                (datetime.datetime(2016, 9, 28, 0, 0), 2, 'DE', 1224, 1, 0.0),
+                (datetime.datetime(2016, 9, 28, 0, 0), 1, 'DE', 1225, 1, 0.0),
+                (datetime.datetime(2016, 9, 28, 0, 0), 2, 'DE', 1225, 1, 0.0),
+                (datetime.datetime(2016, 9, 28, 0, 0), 1, 'US', 122, 1, 0.0),
+                (datetime.datetime(2016, 9, 28, 0, 0), 2, 'US', 122, 1, 0.0),
+                (datetime.datetime(2016, 9, 28, 0, 0), 1, 'US', 12252, 1, 0.0),
+                (datetime.datetime(2016, 9, 28, 0, 0), 2, 'US', 12252, 1, 0.0)
             ])
 
 
@@ -301,10 +301,10 @@ class RedshiftFunctionsTestCase(unittest.TestCase):
         self.assertEqual(
             self.cursor.fetchall(),
             [
-                (datetime.datetime(2016, 9, 28, 0, 0), 1, 'US', 4444L, 1, 41),
-                (datetime.datetime(2016, 9, 28, 0, 0), 2, 'US', 4444L, 1, 556.9),
-                (datetime.datetime(2016, 9, 28, 0, 0), 4, 'US', 4444L, 1, 6.3),
-                (datetime.datetime(2016, 9, 28, 0, 0), 5, 'US', 4444L, 1, 30.8),
+                (datetime.datetime(2016, 9, 28, 0, 0), 1, 'US', 4444, 1, 41),
+                (datetime.datetime(2016, 9, 28, 0, 0), 2, 'US', 4444, 1, 556.9),
+                (datetime.datetime(2016, 9, 28, 0, 0), 4, 'US', 4444, 1, 6.3),
+                (datetime.datetime(2016, 9, 28, 0, 0), 5, 'US', 4444, 1, 30.8),
             ])
 
 
@@ -344,10 +344,10 @@ class RedshiftFunctionsTestCase(unittest.TestCase):
         self.assertEqual(
             self.cursor.fetchall(),
             [
-                (datetime.datetime(2016, 9, 28, 0, 0), 1, 'US', 4444L, 3, 41*3),
-                (datetime.datetime(2016, 9, 28, 0, 0), 2, 'US', 4444L, 2, 556.9*2),
-                (datetime.datetime(2016, 9, 28, 0, 0), 4, 'US', 4444L, 4, 6.3*4),
-                (datetime.datetime(2016, 9, 28, 0, 0), 5, 'US', 4444L, 4, 30.8*4),
+                (datetime.datetime(2016, 9, 28, 0, 0), 1, 'US', 4444, 3, 41*3),
+                (datetime.datetime(2016, 9, 28, 0, 0), 2, 'US', 4444, 2, 556.9*2),
+                (datetime.datetime(2016, 9, 28, 0, 0), 4, 'US', 4444, 4, 6.3*4),
+                (datetime.datetime(2016, 9, 28, 0, 0), 5, 'US', 4444, 4, 30.8*4),
             ])
 
 
