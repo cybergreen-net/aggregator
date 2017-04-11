@@ -4,8 +4,10 @@
   "role_arn":"arn:aws:iam::635396214416:role/RedshiftCopyUnload",
   "source_path": "$CYBERGREEN_SOURCE_ROOT",
   "dest_path": "$CYBERGREEN_DEST_ROOT",
+  "agg_path": "$CYBERGREEN_AGG_ROOT",
   "access_key":"$AWS_ACCESS_KEY_ID",
   "secret_key":"$AWS_SECRET_ACCESS_KEY",
+
   "inventory" : [
     {
       "name":"risk",
