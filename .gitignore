@@ -3,4 +3,4 @@ sandbox/*
 venv/
 *.pyc
 datapackage.json
-idea/
+.idea/
