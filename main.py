@@ -276,6 +276,8 @@ class LoadToRDS(object):
         self.create_tables()
         self.download_and_load()
         self.populate_tables()
+        self.update_dim_country_if_entry_does_not_present()
+        self.update_dim_asn_if_entry_does_not_present()
         self.create_constraints()
         self.create_indexes()
         shutil.rmtree(self.tmpdir)
@@ -412,6 +414,80 @@ class LoadToRDS(object):
         self.create_or_update_cubes(conn, populate_cube)
         self.create_or_update_cubes(conn, update_cube_risk)
         self.create_or_update_cubes(conn, update_cube_country)
+        conn.close()
+
+
+    def update_dim_country_if_entry_does_not_present(self):
+        '''
+        Checks if there is new country in fact table that does not present in dim_country
+        and updates if so. Inserts values like so: (country_id, uknown, unknown, unknown, unknown)
+        '''
+
+        conn = self.connRDS.connect()
+        cmd = dedent('''
+        SELECT DISTINCT country FROM fact_count fc WHERE NOT EXISTS (
+            SELECT 1 FROM dim_country dc WHERE fc.country=dc.id
+        ) AND country IS NOT NULL;
+        ''')
+        results = conn.execute(cmd).fetchall()
+        if not len(results):
+            conn.close()
+            return
+        logging.info (dedent('''
+        Warning: New country ID(s) in fact table that do not present in country dimension.
+        Updating dim_country as follows:
+        id | name    | slug    | region  | continent
+        ---+---------+---------+---------+----------'''))
+        for country in results:
+
+            cmd = dedent('''
+            INSERT INTO dim_country VALUES('%s','unknown','unknown','unknown','unknown')
+            ''' % country[0])
+            conn.execute(cmd)
+            logging.info ('%s | unknown | unknown | unknown | unknown' % country[0])
+        logging.info ('\nUpdate reference data for counrtry with new entries here: https://github.com/cybergreen-net/refdata-country')
+        conn.close()
+
+
+    def update_dim_asn_if_entry_does_not_present(self):
+        '''
+        Checks if there is new ASN in fact table that does not present in dim_asn
+        and updates if so. Inserts values like so: (AS_number, uknown, country_id)
+        '''
+
+        conn = self.connRDS.connect()
+        cmd = dedent('''
+        SELECT DISTINCT asn, country FROM fact_count fc WHERE NOT EXISTS (
+            SELECT 1 FROM dim_asn da WHERE fc.asn=da.number
+        ) AND asn IS NOT NULL;
+        ''')
+        results = conn.execute(cmd).fetchall()
+        if not len(results):
+            conn.close()
+            return
+        logging.info (dedent('''
+        Warning: New AS numbers in fact table that do not present in asn dimension.
+        Updating dim_asn as follows:
+
+        number    | title   | country
+        ----------+---------+--------'''))
+        inserted = []
+        duplicates = []
+        for asn in results:
+            if asn[0] in inserted:
+                duplicates.append(asn)
+                continue
+            inserted.append(asn[0])
+            cmd = dedent('''
+            INSERT INTO dim_asn VALUES(%d,'unknown','%s')
+            ''' % (asn[0], asn[1] or 'XY'))
+            conn.execute(cmd)
+            space = ' '*(10-len(str(asn[0])))
+            logging.info ('%s%s| unknown | %s' % (asn[0], space, asn[1] or 'XY'))
+        logging.info ('\nThis AS numbers were ignored as they already exists with different country ID:')
+        for num in duplicates:
+            logging.info ('%s | %s'%(num[0], num[1]))
+        logging.info ('\nUpdate reference data for counrtry with new entries here: https://github.com/cybergreen-net/refdata-asn')
         conn.close()
 
 
