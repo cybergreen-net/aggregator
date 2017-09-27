@@ -200,8 +200,9 @@ class Aggregator(object):
         (SELECT
             date, risk, country, asn, count(*) as count, 0 as count_amplified
         FROM(
-        SELECT DISTINCT (ip), date_trunc('day', date) AS date, risk, asn, country FROM logentry) AS foo
-        GROUP BY date, asn, risk, country ORDER BY date DESC, country ASC, asn ASC, risk ASC)
+            SELECT DISTINCT (ip), date_trunc('day', date) AS date, risk, asn, country FROM logentry
+        ) AS foo 
+        GROUP BY date, asn, risk, country HAVING count(*) > 100 ORDER BY date DESC, country ASC, asn ASC, risk ASC)
         ''')
         conn.execute(query)
         conn.close()
