@@ -1,6 +1,6 @@
 {
-  "rds_uri": "postgres://cybergreen:$RDS_PASSWORD@cg-stats-dev.crovisjepxcd.eu-west-1.rds.amazonaws.com:5432/$CYBERGREEN_BUILD_ENV",
-  "redshift_uri": "postgres://cybergreen:$REDSHIFT_PASSWORD@cg-analytics.cqxchced59ta.eu-west-1.redshift.amazonaws.com:5439/$CYBERGREEN_BUILD_ENV",
+  "rds_uri": "postgres://dev_cg_scan:$CYBERGREEN_RDS_PASSWORD@dev_cg_scan.crovisjepxcd.eu-west-1.rds.amazonaws.com:5432/$CYBERGREEN_BUILD_ENV",
+  "redshift_uri": "postgres://cybergreen:$CYBERGREEN_REDSHIFT_PASSWORD@$CYBERGREEN_REDSHIFT_CLUSTER_NAME.cqxchced59ta.eu-west-1.redshift.amazonaws.com:5439/$CYBERGREEN_BUILD_ENV", 
   "role_arn":"arn:aws:iam::635396214416:role/RedshiftCopyUnload",
   "source_path": "$CYBERGREEN_SOURCE_ROOT",
   "dest_path": "$CYBERGREEN_DEST_ROOT",
@@ -23,3 +23,5 @@
     }
   ]
 }
+
+
