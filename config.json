@@ -1,27 +1,25 @@
 {
-  "rds_uri": "postgres://dev_cg_scan:$CYBERGREEN_RDS_PASSWORD@dev_cg_scan.crovisjepxcd.eu-west-1.rds.amazonaws.com:5432/$CYBERGREEN_BUILD_ENV",
-  "redshift_uri": "postgres://cybergreen:$CYBERGREEN_REDSHIFT_PASSWORD@$CYBERGREEN_REDSHIFT_CLUSTER_NAME.cqxchced59ta.eu-west-1.redshift.amazonaws.com:5439/$CYBERGREEN_BUILD_ENV", 
-  "role_arn":"arn:aws:iam::635396214416:role/RedshiftCopyUnload",
+  "rds_uri": "postgres://$CYBERGREEN_RAW_SCAN_RDS_NAME:$CYBERGREEN_RAW_SCAN_RDS_PASSWORD@$CYBERGREEN_RAW_SCAN_RDS_NAME.crovisjepxcd.eu-west-1.rds.amazonaws.com:5432/$CYBERGREEN_RAW_SCAN_RDS_NAME",
+  "redshift_uri": "postgres://$CYBERGREEN_REDSHIFT_USER:$CYBERGREEN_REDSHIFT_PASSWORD@$CYBERGREEN_REDSHIFT_CLUSTER_NAME..cqxchced59ta.eu-west-1.redshift.amazonaws.com:5439/$CYBERGREEN_BUILD_ENV", 
+  "role_arn": "arn:aws:iam::635396214416:role/RedshiftCopyUnload",
   "source_path": "$CYBERGREEN_SOURCE_ROOT",
   "dest_path": "$CYBERGREEN_DEST_ROOT",
   "agg_path": "$CYBERGREEN_AGG_ROOT",
-  "access_key":"$AWS_ACCESS_KEY_ID",
-  "secret_key":"$AWS_SECRET_ACCESS_KEY",
+  "access_key": "$AWS_ACCESS_KEY_ID",
+  "secret_key": "$AWS_SECRET_ACCESS_KEY",
 
-  "inventory" : [
-    {
-      "name":"risk",
-      "url":"https://raw.githubusercontent.com/cybergreen-net/refdata-risk/master/datapackage.json"
+  "inventory": [{
+      "name": "risk",
+      "url": "https://raw.githubusercontent.com/cybergreen-net/refdata-risk/$CYBERGREEN_REF_BRANCH/datapackage.json"
     },
     {
       "name": "country",
-      "url":"https://raw.githubusercontent.com/cybergreen-net/refdata-country/master/datapackage.json"
+      "url": "https://raw.githubusercontent.com/cybergreen-net/refdata-country/$CYBERGREEN_REF_BRANCH/datapackage.json"
     },
     {
       "name": "asn",
-      "url": "https://raw.githubusercontent.com/cybergreen-net/refdata-asn/master/datapackage.json"
+      "url": "https://raw.githubusercontent.com/cybergreen-net/refdata-asn/$CYBERGREEN_REF_BRANCH/datapackage.json"
     }
   ]
 }
-
 
