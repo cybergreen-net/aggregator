@@ -33,6 +33,7 @@ def load_config(config_path):
         raise ValueError(
             "A missing environment variable: {}".format(e))
     config = json.loads(config_str)
+    logging.info("COnfig file {}".format(config))
 
     return config
 
