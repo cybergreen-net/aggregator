@@ -62,7 +62,12 @@ class Aggregator(object):
             aws_access_key_id=config.get('access_key'),
             aws_secret_access_key=config.get('secret_key')
         )
-
+        # only include country risk data for those with at least this many
+        # results
+        self.country_count_threshold = (
+            self.config.get("country_count_threshold", 100))
+        logging.info("Using country count threshold: {}".format(
+            self.country_count_threshold))
 
     def run(self):
         table_name = 'count'
@@ -204,10 +209,10 @@ class Aggregator(object):
             date, risk, country, asn, count(*) as count, 0 as count_amplified
         FROM(
             SELECT DISTINCT (ip), date_trunc('day', date) AS date, risk, asn, country FROM logentry
-        ) AS foo 
-        GROUP BY date, asn, risk, country HAVING count(*) > 100 ORDER BY date DESC, country ASC, asn ASC, risk ASC)
+        ) AS foo
+        GROUP BY date, asn, risk, country HAVING count(*) > %(threshold)s ORDER BY date DESC, country ASC, asn ASC, risk ASC)
         ''')
-        conn.execute(query)
+        conn.execute(query, {'threshold': self.country_count_threshold})
         conn.close()
 
 
