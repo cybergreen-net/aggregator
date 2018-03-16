@@ -63,7 +63,12 @@ class Aggregator(object):
             aws_access_key_id=config.get('access_key'),
             aws_secret_access_key=config.get('secret_key')
         )
-
+        # only include country risk data for those with at least this many
+        # results
+        self.country_count_threshold = (
+            self.config.get("country_count_threshold", 100))
+        logging.info("Using country count threshold: {}".format(
+            self.country_count_threshold))
 
     def run(self):
         table_name = 'count'
@@ -104,6 +109,9 @@ class Aggregator(object):
         tmp_manifest = join(self.tmpdir, 'clean.manifest')
         s3bucket, key = split_s3_path(self.config.get('dest_path'))
         dp_key = join(key, 'datapackage.json')
+        logging.info("dest_path from config is {}".format(self.config.get('dest_path')))
+        logging.info("s3bucket is {}".format(s3bucket))
+        logging.info("key is {}".format(key))
         logging.info("dp_key is {}".format(dp_key))
         obj = self.conns3.Object(s3bucket, dp_key)
         dp = obj.get()['Body'].read().decode()
@@ -134,6 +142,7 @@ class Aggregator(object):
         create_risk = dedent('''
         CREATE TABLE dim_risk(
         id INT, slug VARCHAR(32), title VARCHAR(32),
+        is_archived BOOLEAN,
         taxonomy VARCHAR(16), measurement_units VARCHAR(32),
         amplification_factor FLOAT, description TEXT
         )
@@ -178,7 +187,7 @@ class Aggregator(object):
         risks = dp.resources[0].data
         query = dedent('''
         INSERT INTO dim_risk
-        VALUES (%(id)s, %(slug)s, %(title)s, %(taxonomy)s, %(measurement_units)s, %(amplification_factor)s, %(description)s)''')
+        VALUES (%(id)s, %(slug)s, %(title)s, %(is_archived)s, %(taxonomy)s, %(measurement_units)s, %(amplification_factor)s, %(description)s)''')
         for risk in risks:
             # description is too long and not needed here
             risk['description']=''
@@ -202,10 +211,10 @@ class Aggregator(object):
             date, risk, country, asn, count(*) as count, 0 as count_amplified
         FROM(
             SELECT DISTINCT (ip), date_trunc('day', date) AS date, risk, asn, country FROM logentry
-        ) AS foo 
-        GROUP BY date, asn, risk, country HAVING count(*) > 100 ORDER BY date DESC, country ASC, asn ASC, risk ASC)
+        ) AS foo
+        GROUP BY date, asn, risk, country HAVING count(*) > %(threshold)s ORDER BY date DESC, country ASC, asn ASC, risk ASC)
         ''')
-        conn.execute(query)
+        conn.execute(query, {'threshold': self.country_count_threshold})
         conn.close()
 
 

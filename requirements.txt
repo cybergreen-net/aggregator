@@ -1,5 +1,5 @@
 jsontableschema-sql
-datapackage==0.8.7
+datapackage==0.8.4
 sqlalchemy
 psycopg2
 boto3
