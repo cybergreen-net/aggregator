@@ -1,4 +1,3 @@
-jsontableschema-sql==0.10.1
 datapackage==0.8.4
 SQLAlchemy==1.2.6
 psycopg2==2.7.3.2
