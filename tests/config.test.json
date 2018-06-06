@@ -6,6 +6,7 @@
   "dest_path": "",
   "access_key":"",
   "secret_key":"",
+  "country_count_threshold": 0,
   "inventory" : [
     {
       "name":"risk",

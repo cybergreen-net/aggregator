@@ -1,5 +1,5 @@
-id,slug,title,taxonomy,measurement_units,amplification_factor,description
-0,test-risk,Test Risk,Testable,count,0.13456,"Nice
+id,slug,title,is_archived,taxonomy,measurement_units,amplification_factor,description
+0,test-risk,Test Risk,false,Testable,count,0.13456,"Nice
 Small
 Description"
-100,global,DDOS,Combined risk,GBit/sec,1,
+100,global,DDOS,false,Combined risk,GBit/sec,1,
