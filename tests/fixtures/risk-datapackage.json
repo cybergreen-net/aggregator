@@ -26,6 +26,11 @@
             "description": "Actual name for given risk"
           },
           {
+            "name": "is_archived",
+            "type": "boolean",
+            "description": "Data set removed from graph pages"
+          },
+          {
             "name": "taxonomy",
             "type": "string",
             "description": "Taxonomy for given risk"
