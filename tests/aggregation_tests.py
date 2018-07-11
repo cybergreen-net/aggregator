@@ -25,11 +25,11 @@ class RedshiftFunctionsTestCase(unittest.TestCase):
 
         # reference data with amplification factors
         self.scan_csv = dedent('''\
-        id,slug,title,amplification_factor,description
-        1,,,,,41,
-        2,,,,,556.9,
-        4,,,,,6.3,
-        5,,,,,30.8,
+        id,slug,title,is_archived,amplification_factor,description
+        1,,,false,,,41,
+        2,,,false,,,556.9,
+        4,,,false,,,6.3,
+        5,,,false,,,30.8,
         ''')
         # set configurations
         self.cursor = self.aggregator.connRedshift.raw_connection().cursor()
@@ -88,7 +88,7 @@ class RedshiftFunctionsTestCase(unittest.TestCase):
         # load data
         self.aggregator.load_ref_data()
         self.cursor.execute('SELECT * FROM dim_risk')
-        self.assertEqual(self.cursor.fetchone(), (0, u'test-risk', u'Test Risk','Testable','count', 0.13456, u''))
+        self.assertEqual(self.cursor.fetchone(), (0, u'test-risk', u'Test Risk', False, 'Testable','count', 0.13456, u''))
 
 
     def test_group_by_day(self):
@@ -152,8 +152,8 @@ class RedshiftFunctionsTestCase(unittest.TestCase):
         # hostB: 2 entries of different risk type
         scan_csv = dedent('''\
         ts,ip,risk_id,asn,cc
-        2016-09-29T00:00:01+00:00,71.3.0.1,2,12252,US
-        2016-09-29T00:00:01+00:00,190.81.134.11,2,12252,US
+        2016-09-29T00:00:01+00:00,71.3.0.1,0,12252,US
+        2016-09-29T00:00:01+00:00,190.81.134.12,0,12252,US
         2016-09-29T00:00:01+00:00,190.81.134.11,1,12252,US
         ''')
         self.cursor.copy_expert("COPY logentry from STDIN csv header", StringIO(scan_csv))
@@ -161,12 +161,12 @@ class RedshiftFunctionsTestCase(unittest.TestCase):
         self.aggregator.aggregate()
 
         #count table should have 2 rows corresponding to different risks, with properly grouped entries
-        self.cursor.execute('select * from count;')
+        self.cursor.execute('select * from count ORDER BY risk;')
         self.assertEqual(
             self.cursor.fetchall(),
             [
-                (datetime.datetime(2016, 9, 29, 0, 0), 1, 'US', 12252, 1, 0.0),
-                (datetime.datetime(2016, 9, 29, 0, 0), 2, 'US', 12252, 2, 0.0)
+                (datetime.datetime(2016, 9, 29, 0, 0), 0, u'US', 12252, 2, 0.0),
+                (datetime.datetime(2016, 9, 29, 0, 0), 1, u'US', 12252, 1, 0.0)
             ])
 
 
@@ -408,7 +408,7 @@ class RDSFunctionsTestCase(unittest.TestCase):
         '''
         self.cursor.execute('SELECT * FROM data__risk___risk')
         self.assertEqual(self.cursor.fetchone(),
-                         (0.0, u'test-risk', u'Test Risk','Testable','count', 0.13456, u'Nice\nSmall\nDescription'))
+                         (0.0, u'test-risk', u'Test Risk', False, 'Testable','count', 0.13456, u'Nice\nSmall\nDescription'))
         self.cursor.execute('SELECT * FROM data__country___country')
         self.assertEqual(self.cursor.fetchone(),
                          (u'AA', u'Test country', u'test-country', u'test-regiton', u'test-continent'))
