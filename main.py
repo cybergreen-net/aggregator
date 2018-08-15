@@ -59,9 +59,7 @@ class Aggregator(object):
             isolation_level='AUTOCOMMIT'
         )
         self.conns3 = boto3.resource(
-            's3',
-            aws_access_key_id=config.get('access_key'),
-            aws_secret_access_key=config.get('secret_key')
+            's3'
         )
         # only include country risk data for those with at least this many
         # results
@@ -233,16 +231,14 @@ class Aggregator(object):
 
     def unload(self, table):
         conn = self.connRedshift.connect()
-        aws_auth_args = 'aws_access_key_id=%s;aws_secret_access_key=%s'%\
-            (self.config.get('access_key'), self.config.get('secret_key'))
         conn.execute(dedent('''
         UNLOAD('SELECT * FROM count')
         TO '%s'
-        CREDENTIALS '%s'
+        iam_role '%s'
         DELIMITER AS ','
         ALLOWOVERWRITE
         PARALLEL OFF
-        ''')%(join(self.config.get('agg_path'), table), aws_auth_args))
+        ''')%(join(self.config.get('agg_path'), table), self.config['role_arn'] ))
         conn.close()
 
         bucket, key = split_s3_path(self.config.get('agg_path'))
@@ -271,9 +267,7 @@ class LoadToRDS(object):
         self.ref_data_urls = [inventory.get('url') for inventory in config.get('inventory')]
         self.connRDS = create_engine(config.get('rds_uri'))
         self.conns3 = boto3.resource(
-            's3',
-            aws_access_key_id=config.get('access_key'),
-            aws_secret_access_key=config.get('secret_key')
+            's3'
         )
         self.tablenames = [
             'fact_count', 'agg_risk_country_week',
