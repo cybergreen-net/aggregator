@@ -170,7 +170,7 @@ class Aggregator(object):
         MANIFEST
         ''')
         logging.info('Loading data into db ... ')
-        conn.execute(copycmd%(manifest, self.config.get('role_arn')))
+        conn.execute(copycmd%(manifest, self.config.get('role_arn_redshift')))
         conn.close()
         logging.info('Data Loaded')
 
@@ -238,7 +238,7 @@ class Aggregator(object):
         DELIMITER AS ','
         ALLOWOVERWRITE
         PARALLEL OFF
-        ''')%(join(self.config.get('agg_path'), table), self.config['role_arn'] ))
+        ''')%(join(self.config.get('agg_path'), table), self.config['role_arn_redshift'] ))
         conn.close()
 
         bucket, key = split_s3_path(self.config.get('agg_path'))
