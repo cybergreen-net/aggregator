@@ -1,6 +1,6 @@
 datapackage==0.8.4
 jsontableschema-sql==0.8.0
 SQLAlchemy==1.2.6
-psycopg2==2.7.3.2
+psycopg2-binary==2.7.3.2
 boto3==1.4.7
 rfc3986==0.4.1
