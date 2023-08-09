@@ -1,7 +1,7 @@
 {
   "_comment": "This doesn't appear to get used in ETL at all? TODO: remove if unnecessary.",
-  "rds_uri": "postgres://$CYBERGREEN_STATS_RDS_NAME:$CYBERGREEN_STATS_RDS_PASSWORD@$CYBERGREEN_RAW_SCAN_RDS_NAME.crovisjepxcd.eu-west-1.rds.amazonaws.com:5432/$CYBERGREEN_STATS_RDS_NAME",
-  "redshift_uri": "postgres://$CYBERGREEN_REDSHIFT_USER:$CYBERGREEN_REDSHIFT_PASSWORD@$CYBERGREEN_REDSHIFT_CLUSTER_NAME.cqxchced59ta.eu-west-1.redshift.amazonaws.com:5439/$CYBERGREEN_BUILD_ENV", 
+  "rds_uri": "postgresql://$CYBERGREEN_STATS_RDS_NAME:$CYBERGREEN_STATS_RDS_PASSWORD@$CYBERGREEN_RAW_SCAN_RDS_NAME.crovisjepxcd.eu-west-1.rds.amazonaws.com:5432/$CYBERGREEN_STATS_RDS_NAME",
+  "redshift_uri": "postgresql://$CYBERGREEN_REDSHIFT_USER:$CYBERGREEN_REDSHIFT_PASSWORD@$CYBERGREEN_REDSHIFT_CLUSTER_NAME.cqxchced59ta.eu-west-1.redshift.amazonaws.com:5439/$CYBERGREEN_BUILD_ENV",
   "role_arn": "arn:aws:iam::635396214416:role/RedshiftCopyUnload",
   "source_path": "$CYBERGREEN_SOURCE_ROOT",
   "dest_path": "$CYBERGREEN_DEST_ROOT",

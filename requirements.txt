@@ -1,6 +1,7 @@
-datapackage==0.8.4
-jsontableschema-sql==0.8.0
-SQLAlchemy==1.2.6
-psycopg2==2.7.3.2
-boto3==1.4.7
-rfc3986==0.4.1
+datapackage==1.15.2
+tableschema-sql==2.0.1
+SQLAlchemy==2.0.19
+psycopg2==2.9.7
+boto3==1.28.22
+rfc3986==2.0.0
+sqlalchemy-redshift==0.8.14
