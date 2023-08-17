@@ -5,3 +5,4 @@ psycopg2==2.9.7
 boto3==1.28.22
 rfc3986==2.0.0
 sqlalchemy-redshift==0.8.14
+redshift_connector==2.0.913

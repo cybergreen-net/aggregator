@@ -9,9 +9,12 @@ import os
 
 from io import StringIO
 from textwrap import dedent
+from time import sleep
 
 from psycopg2.extensions import AsIs
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text, inspect
+from sqlalchemy.dialects import postgresql
+from sqlalchemy.engine import Inspector
 
 from aggregator.main import Aggregator, LoadToRDS
 
@@ -36,25 +39,15 @@ class RedshiftFunctionsTestCase(unittest.TestCase):
         # create tables
         self.aggregator.create_tables()
 
-
     def test_all_tables_created(self):
         '''
         Checks if all necessary tables are created for redshift
         '''
-        self.aggregator.create_tables()
-        self.cursor.execute(
-            'select exists(select * from information_schema.tables where table_name=%(table)s)',
-            {'table': 'logentry'})
-        self.assertEqual(self.cursor.fetchone()[0], True)
-        self.cursor.execute(
-            'select exists(select * from information_schema.tables where table_name=%(table)s)',
-            {'table': 'count'})
-        self.assertEqual(self.cursor.fetchone()[0], True)
-        self.cursor.execute(
-            'select exists(select * from information_schema.tables where table_name=%(table)s)',
-            {'table': 'dim_risk'})
-        self.assertEqual(self.cursor.fetchone()[0], True)
-
+        inspector = inspect(self.aggregator.connRedshift)
+        tables_list = inspector.get_table_names()
+        for table_name in ['logentry', 'dim_risk', 'count']:
+            print(f'Checking for table {table_name}')
+            self.assertTrue(table_name in tables_list)
 
     def test_drop_tables(self):
         '''
@@ -64,21 +57,11 @@ class RedshiftFunctionsTestCase(unittest.TestCase):
             self.aggregator.connRedshift,
             ['logentry', 'count', 'dim_risk']
         )
-        self.cursor.execute(
-            'select exists(select * from information_schema.tables where table_name=%(table)s)',
-            {'table': 'logentry'}
-        )
-        self.assertEqual(self.cursor.fetchone()[0], False)
-        self.cursor.execute(
-            'select exists(select * from information_schema.tables where table_name=%(table)s)',
-            {'table': 'count'}
-        )
-        self.assertEqual(self.cursor.fetchone()[0], False)
-        self.cursor.execute(
-            'select exists(select * from information_schema.tables where table_name=%(table)s)',
-            {'table': 'dim_risk'}
-        )
-        self.assertEqual(self.cursor.fetchone()[0], False)
+        inspector = inspect(self.aggregator.connRedshift)
+        tables_list = inspector.get_table_names()
+        for table_name in ['logentry', 'dim_risk', 'count']:
+            print(f'Checking for table {table_name}')
+            self.assertFalse(table_name in tables_list)
 
 
     def test_referenece_data_loaded(self):
@@ -87,6 +70,7 @@ class RedshiftFunctionsTestCase(unittest.TestCase):
         '''
         # load data
         self.aggregator.load_ref_data()
+        print('Finished loading reference data')
         self.cursor.execute('SELECT * FROM dim_risk')
         self.assertEqual(self.cursor.fetchone(), (0, u'test-risk', u'Test Risk', False, 'Testable','count', 0.13456, u''))
 
@@ -283,11 +267,11 @@ class RedshiftFunctionsTestCase(unittest.TestCase):
         self.aggregator.create_tables()
         # GIVEN 4 entries of the same day, country, ASN an IP but different risks
         scan_csv = dedent('''\
-        ts,ip,risk_id,asn,cc
-        2016-09-28T00:00:01+00:00,71.3.0.1,1,4444,US
-        2016-09-28T00:00:01+00:00,71.3.0.1,2,4444,US
-        2016-09-28T00:00:01+00:00,71.3.0.1,4,4444,US
-        2016-09-28T00:00:01+00:00,71.3.0.1,5,4444,US
+        id,ts,ip,risk_id,asn,cc
+        1,2016-09-28T00:00:01+00:00,71.3.0.1,1,4444,US
+        2,2016-09-28T00:00:01+00:00,71.3.0.1,2,4444,US
+        3,2016-09-28T00:00:01+00:00,71.3.0.1,4,4444,US
+        4,2016-09-28T00:00:01+00:00,71.3.0.1,5,4444,US
         ''')
         self.cursor.copy_expert("COPY logentry from STDIN csv header", StringIO(scan_csv))
         # import ref data
@@ -297,7 +281,7 @@ class RedshiftFunctionsTestCase(unittest.TestCase):
         self.aggregator.update_amplified_count()
         self.maxDiff = None
 
-        self.cursor.execute('select * from count;')
+        self.cursor.execute(text('select * from count;'))
         self.assertEqual(
             self.cursor.fetchall(),
             [
@@ -316,21 +300,21 @@ class RedshiftFunctionsTestCase(unittest.TestCase):
         self.aggregator.create_tables()
         # GIVEN 4 entries of the same day, country, ASN, but different risks
         scan_csv = dedent('''\
-        ts,ip,risk_id,asn,cc
-        2016-09-28T00:00:01+00:00,71.3.0.1,1,4444,US
-        2016-09-28T00:00:01+00:00,71.3.0.2,1,4444,US
-        2016-09-28T00:00:01+00:00,71.3.0.3,1,4444,US
-        2016-09-28T00:00:01+00:00,71.3.0.1,2,4444,US
-        2016-09-28T00:00:01+00:00,71.3.0.2,2,4444,US
-        2016-09-28T00:00:01+00:00,71.3.0.1,4,4444,US
-        2016-09-28T00:00:01+00:00,71.3.0.2,4,4444,US
-        2016-09-28T00:00:01+00:00,71.3.0.3,4,4444,US
-        2016-09-28T00:00:01+00:00,71.3.0.4,4,4444,US
-        2016-09-28T00:00:01+00:00,71.3.0.1,5,4444,US
-        2016-09-28T00:00:01+00:00,71.3.0.1,5,4444,US
-        2016-09-28T00:00:01+00:00,71.3.0.2,5,4444,US
-        2016-09-28T00:00:01+00:00,71.3.0.3,5,4444,US
-        2016-09-28T00:00:01+00:00,71.3.0.4,5,4444,US
+        id,ts,ip,risk_id,asn,cc
+        1,2016-09-28T00:00:01+00:00,71.3.0.1,1,4444,US
+        2,2016-09-28T00:00:01+00:00,71.3.0.2,1,4444,US
+        3,2016-09-28T00:00:01+00:00,71.3.0.3,1,4444,US
+        4,2016-09-28T00:00:01+00:00,71.3.0.1,2,4444,US
+        5,2016-09-28T00:00:01+00:00,71.3.0.2,2,4444,US
+        6,2016-09-28T00:00:01+00:00,71.3.0.1,4,4444,US
+        7,2016-09-28T00:00:01+00:00,71.3.0.2,4,4444,US
+        8,2016-09-28T00:00:01+00:00,71.3.0.3,4,4444,US
+        9,2016-09-28T00:00:01+00:00,71.3.0.4,4,4444,US
+        10,2016-09-28T00:00:01+00:00,71.3.0.1,5,4444,US
+        11,2016-09-28T00:00:01+00:00,71.3.0.1,5,4444,US
+        12,2016-09-28T00:00:01+00:00,71.3.0.2,5,4444,US
+        13,2016-09-28T00:00:01+00:00,71.3.0.3,5,4444,US
+        14,2016-09-28T00:00:01+00:00,71.3.0.4,5,4444,US
         ''')
         self.cursor.copy_expert("COPY logentry from STDIN csv header", StringIO(scan_csv))
         # import ref data
@@ -340,7 +324,7 @@ class RedshiftFunctionsTestCase(unittest.TestCase):
         self.aggregator.update_amplified_count()
         self.maxDiff = None
 
-        self.cursor.execute('select * from count;')
+        self.cursor.execute(text('select * from count;'))
         self.assertEqual(
             self.cursor.fetchall(),
             [
@@ -365,8 +349,8 @@ class RDSFunctionsTestCase(unittest.TestCase):
         self.tablenames = [
             'fact_count', 'agg_risk_country_week',
             'agg_risk_country_month', 'agg_risk_country_quarter',
-            'agg_risk_country_year', 'dim_risk', 'dim_country',
-            'dim_asn', 'dim_date'
+            'agg_risk_country_year', 'data__risk___risk', 'data__country___country',
+            'data__asn___asn', 'dim_date'
         ]
         # snipet for fact_count table
         self.counts = dedent('''
@@ -524,4 +508,4 @@ class MetadataTestCase(unittest.TestCase):
              'mandatory': True}
             ]}
         manifest = self.aggregator.create_manifest(datapackage, 's3://test.bucket/test/key')
-        self.assertEquals(manifest,expected_manifest)
+        self.assertEqual(manifest, expected_manifest)

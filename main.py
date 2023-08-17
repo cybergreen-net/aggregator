@@ -1,8 +1,9 @@
 from __future__ import print_function
 
-from datapackage import push_datapackage
+from datapackage import push_datapackage, Package, Resource
 from psycopg2.extensions import AsIs
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text, MetaData, Table, Integer, Column, TIMESTAMP, String, BigInteger, Text, \
+    Float, Boolean
 from os.path import dirname, join
 from string import Template
 from textwrap import dedent
@@ -16,6 +17,9 @@ import boto3
 import json
 import csv
 import os
+
+from sqlalchemy.dialects import postgresql
+from sqlalchemy.sql.ddl import CreateTable
 
 #utils
 def rpath(*args):
@@ -84,10 +88,12 @@ class Aggregator(object):
         shutil.rmtree(self.tmpdir)
 
 
-    def drop_tables(self, cursor, tables):
+    def drop_tables(self, conn, tables):
+        cursor = conn.connect()
         for tablename in tables:
+            statement = text("DROP TABLE IF EXISTS :table CASCADE")
             cursor.execute(
-                "DROP TABLE IF EXISTS %(table)s CASCADE",
+                statement,
                 {"table": AsIs(tablename)}
             )
 
@@ -127,35 +133,55 @@ class Aggregator(object):
 
     def create_tables(self):
         conn = self.connRedshift.connect()
-        tablenames = [
-            'dim_risk', 'logentry', 'count'
-        ]
-        self.drop_tables(conn, tablenames)
-        create_logentry = dedent('''
-        CREATE TABLE logentry(
-        date TIMESTAMP, ip VARCHAR(32), risk INT,
-        asn BIGINT, country VARCHAR(2)
-        )
-        ''')
-        create_risk = dedent('''
-        CREATE TABLE dim_risk(
-        id INT, slug VARCHAR(32), title VARCHAR(32),
-        is_archived BOOLEAN,
-        taxonomy VARCHAR(16), measurement_units VARCHAR(32),
-        amplification_factor FLOAT, description TEXT
-        )
-        ''')
-        create_count = dedent('''
-        CREATE TABLE count(
-        date TIMESTAMP, risk INT, country VARCHAR(2),
-        asn BIGINT, count INT, count_amplified FLOAT
-        )
-        ''')
-        conn.execute(create_risk)
-        conn.execute(create_logentry)
-        conn.execute(create_count)
-        conn.close()
-        logging.info('Redshift tables created')
+
+        transaction = conn.begin()
+
+        metadata = MetaData()
+        logentry_table = Table('logentry', metadata,
+                               Column('id', Integer),
+                               Column('date', TIMESTAMP),
+                               Column('ip', String(32)),
+                               Column('risk', Integer),
+                               Column('asn', BigInteger),
+                               Column('country', String(2)))
+        statement = CreateTable(logentry_table, if_not_exists=True)
+        print(statement.compile(dialect=postgresql.dialect()))
+
+        conn.execute(statement)
+        transaction.commit()
+
+        transaction = conn.begin()
+        metadata = MetaData()
+        risk_table = Table('dim_risk', metadata,
+                           Column('id', Integer),
+                           Column('slug', String(32)),
+                           Column('title', String(32)),
+                           Column('is_archived', Boolean),
+                           Column('taxonomy', String(16)),
+                           Column('measurement_units', String(32)),
+                           Column('amplification_factor', Float),
+                           Column('description', Text))
+        statement = CreateTable(risk_table, if_not_exists=True)
+        print(statement.compile(dialect=postgresql.dialect()))
+
+        conn.execute(statement)
+        transaction.commit()
+
+        transaction = conn.begin()
+        metadata = MetaData()
+        count_table = Table('count', metadata,
+                            Column('date', TIMESTAMP),
+                            Column('risk', Integer),
+                            Column('country', String(2)),
+                            Column('asn', BigInteger),
+                            Column('count', Integer),
+                            Column('count_amplified', Float))
+        statement = CreateTable(count_table, if_not_exists=True)
+        print(statement.compile(dialect=postgresql.dialect()))
+
+        conn.execute(statement)
+        transaction.commit()
+        print('Redshift tables created')
 
 
     def load_data(self):
@@ -182,14 +208,18 @@ class Aggregator(object):
             if inv.get('name') == 'risk':
                 url = inv.get('url')
         dp = datapackage.DataPackage(url)
-        risks = dp.resources[0].data
-        query = dedent('''
-        INSERT INTO dim_risk
-        VALUES (%(id)s, %(slug)s, %(title)s, %(is_archived)s, %(taxonomy)s, %(measurement_units)s, %(amplification_factor)s, %(description)s)''')
+        risks = dp.resources[0].read(keyed=True)
+        table_name = 'dim_risk'
+        columns = ', '.join(['id', 'slug', 'title',
+                             'is_archived', 'taxonomy', 'measurement_units',
+                             'amplification_factor', 'description'])
+
+        statement = text(f'INSERT INTO {table_name} {columns} VALUES (:id, :slug, :title, :is_archived, :taxonomy, :measurement_units, :amplification_factor, :description)')
+
         for risk in risks:
             # description is too long and not needed here
             risk['description']=''
-            conn.execute(query,risk)
+            conn.execute(statement,risk)
         conn.close()
 
 
@@ -210,9 +240,9 @@ class Aggregator(object):
         FROM(
             SELECT DISTINCT (ip), date_trunc('day', date) AS date, risk, asn, country FROM logentry
         ) AS foo
-        GROUP BY date, asn, risk, country HAVING count(*) > %(threshold)s ORDER BY date DESC, country ASC, asn ASC, risk ASC)
+        GROUP BY date, asn, risk, country HAVING count(*) > :threshold ORDER BY date DESC, country ASC, asn ASC, risk ASC)
         ''')
-        conn.execute(query, {'threshold': self.country_count_threshold})
+        conn.execute(text(query), {'threshold': self.country_count_threshold})
         conn.close()
 
 
@@ -224,7 +254,7 @@ class Aggregator(object):
         SET count_amplified = count*amplification_factor
         FROM dim_risk WHERE risk=id
         ''')
-        conn.execute(query)
+        conn.execute(text(query))
         conn.close()
         logging.info('Aggregation Finished!')
 
@@ -289,8 +319,11 @@ class LoadToRDS(object):
 
 
     def drop_tables(self, tables):
+        conn = self.connRDS.connect()
+        transaction = conn.begin()
         for tablename in tables:
-            self.connRDS.execute("DROP TABLE IF EXISTS %(table)s CASCADE",{"table": AsIs(tablename)})
+            conn.execute(text("DROP TABLE IF EXISTS :table CASCADE"),{"table": AsIs(tablename)})
+        transaction.commit()
 
 
     def download_and_load(self):
@@ -304,7 +337,7 @@ class LoadToRDS(object):
         logging.info('Loading into RDS ...')
         # TODO: replace shelling out to psql
         copy_command = dedent('''
-        psql {uri} -c "\COPY fact_count FROM {tmp}/count.csv WITH delimiter as ',' null '' csv;"
+        psql {uri} -c "\\COPY fact_count FROM {tmp}/count.csv WITH delimiter as ',' null '' csv;"
         ''')
         os.system(copy_command.format(tmp=self.tmpdir,uri=self.config.get('rds_uri')))
 
@@ -313,29 +346,33 @@ class LoadToRDS(object):
         logging.info('Loading reference_data to RDS ...')
         conn = self.connRDS.connect()
         # creating dim_asn table here with other ref data
-        conn.execute('DROP TABLE IF EXISTS data__asn___asn CASCADE')
-        create_asn = 'CREATE TABLE data__asn___asn(number BIGINT, title TEXT, country TEXT)'
+        transaction = conn.begin()
+        conn.execute(text('DROP TABLE IF EXISTS data__asn___asn'))
+        create_asn = text('CREATE TABLE data__asn___asn(number BIGINT, title TEXT, country TEXT)')
         conn.execute(create_asn)
+        transaction.commit()
 
         for url in self.ref_data_urls:
+            print(url)
             # Loading of asn with push_datapackage takes more then 2 hours
             # So have to download locally and save (takes ~5 seconds)
             if 'asn' not in url:
-                push_datapackage(descriptor=url, backend='sql', engine=conn)
+                print(f'Skipping {url}')
+                # push_datapackage(descriptor=url, backend='sql', engine=conn)
             else:
                 dp = datapackage.DataPackage(url)
                 # local path will be returned if not found remote one (for tests)
-                if dp.resources[0].remote_data_path:
-                    r = requests.get(dp.resources[0].remote_data_path)
-                    with open(join(self.tmpdir, 'asn.csv'),"wb") as fp:
-                        fp.write(r.content)
-                else:
-                    shutil.copy(dp.resources[0].local_data_path,join(self.tmpdir, 'asn.csv'))
-                # TODO: replace shelling out
-                copy_command = dedent('''
-                psql {uri} -c "\COPY data__asn___asn FROM {tmp}/asn.csv WITH delimiter as ',' csv header;"
-                ''')
-                os.system(copy_command.format(tmp=self.tmpdir,uri=self.config.get('rds_uri')))
+                if len(dp.resources) > 0:
+                    data = dp.resources[0].read()
+                    import csv
+                    with open(join(self.tmpdir, 'asn.csv'),"w") as fp:
+                        fw = csv.writer(fp)
+                        fw.writerows(data)
+                    copy_command = dedent('''
+                    psql {uri} -c "\\COPY data__asn___asn FROM {tmp}/asn.csv WITH delimiter as ',' csv header;"
+                    ''')
+                    print(f'Executing psql command {copy_command.format(tmp=self.tmpdir, uri=self.config.get("rds_uri"))}')
+                    os.system(copy_command.format(tmp=self.tmpdir, uri=self.config.get('rds_uri')))
         conn.close()
 
 
@@ -367,11 +404,11 @@ class LoadToRDS(object):
             count_amplified FLOAT
             )''')
 
-        conn.execute(create_risk)
-        conn.execute(create_country)
-        conn.execute(create_asn)
-        conn.execute(create_time)
-        conn.execute(create_count)
+        conn.execute(text(create_risk))
+        conn.execute(text(create_country))
+        conn.execute(text(create_asn))
+        conn.execute(text(create_time))
+        conn.execute(text(create_count))
         self.create_or_update_cubes(conn, create_cube)
         conn.close()
 

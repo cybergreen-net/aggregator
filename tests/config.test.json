@@ -1,6 +1,6 @@
 {
-  "rds_uri": "postgres://cg_test_user:secret@localhost/cg_test_db",
-  "redshift_uri": "postgres://cg_test_user:secret@localhost/cg_test_db",
+  "rds_uri": "postgresql://cg_test_user:secret@localhost/cg_test_db",
+  "redshift_uri": "postgresql://cg_test_user:secret@localhost/cg_test_db",
   "role_arn":"",
   "source_path": "",
   "dest_path": "",
