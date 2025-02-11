@@ -1,3 +1,4 @@
 sqlalchemy
 mock==2.0.0
 nose==1.3.7
+setuptools>=70.0.0 # not directly required, pinned by Snyk to avoid a vulnerability
